@@ -1,0 +1,40 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { runInNewContext } from 'node:vm';
+import * as domain from '../src/domain.ts';
+
+test('draft reload accepts reordered unchanged rows but rejects changed values at the same version', async () => {
+  const require = createRequire(import.meta.url); const ts = require('typescript');
+  const source = readFileSync(new URL('../src/ui.tsx', import.meta.url), 'utf8');
+  const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.React, esModuleInterop: true } }).outputText;
+  const initial = { id: 'tx', walletId: 'cash', categoryId: 'food', kind: 'expense', amount: '10', occurredAt: '2026-10-10T01:00:00.000Z', note: 'Bản gốc', tagIds: ['b', 'a'], version: 1 };
+  const loaded = { id: 'tx', version: 1, walletId: 'cash', categoryId: 'food', kind: 'expense', amount: '10', occurredAt: initial.occurredAt, note: initial.note, tagIds: ['a', 'b'] };
+  let current: any = loaded;
+  const states: any[] = []; let index = 0;
+  const react = { useState: (value: any) => { const slot = index++; states[slot] = value; return [value, (next: any) => { states[slot] = next; }]; }, useRef: (value: any) => ({ current: value }), useEffect: () => {} };
+  const exports: any = {};
+  runInNewContext(code, { exports, require: (name: string) => {
+    if (name === 'react') return react;
+    if (name === 'react-native') return { StyleSheet: { create: (styles: any) => styles } };
+    if (name === 'expo-router') return { useNavigation: () => ({}) };
+    if (name === 'expo-router/react-navigation') return { usePreventRemove: () => {} };
+    if (name === './domain') return domain;
+    if (name === './store') return { newId: () => 'draft-id', errorMessage: (e: Error) => e.message, useLedger: () => ({ revision: 1, refresh: async () => ({ revision: 2, ledger: { transactions: current ? [current] : [] } }) }) };
+    return {};
+  } });
+  const draft = exports.useDraft({ amount: '10', note: 'Bản gốc' }, { table: 'transactions', row: initial });
+  await draft.reload();
+  assert.equal(states[4], 2, 'unchanged record must advance draft revision despite property and relation order');
+  assert.equal(Object.keys(states[1]).length, 0);
+  assert.match(states[5], /Đã tải dữ liệu/);
+  states[4] = 1; current = { ...loaded, amount: '11' };
+  await draft.reload();
+  assert.equal(states[4], 1, 'same-version restore changed amount must not rebase the old draft');
+  assert.match(states[1].form, /đã thay đổi|khôi phục/);
+  assert.equal(states[5], '', 'old success notice must disappear when reload rejects changed data');
+  current = undefined;
+  await draft.reload();
+  assert.equal(states[4], 1); assert.match(states[1].form, /đã thay đổi|khôi phục/);
+});

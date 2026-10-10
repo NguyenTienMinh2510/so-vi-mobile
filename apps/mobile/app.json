@@ -1,0 +1,26 @@
+{
+  "expo": {
+    "name": "Sổ Ví",
+    "slug": "so-vi",
+    "scheme": "sovi",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "local.sovi.moneytracker"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-sqlite",
+      "expo-sharing",
+      "expo-status-bar",
+      ["expo-image-picker", { "photosPermission": "Sổ Ví chỉ đọc ảnh bạn chọn để nhận diện văn bản trên điện thoại.", "cameraPermission": "Sổ Ví dùng camera khi bạn chọn chụp ảnh để nhận diện văn bản trên điện thoại.", "microphonePermission": false }],
+      "./plugins/with-so-vi-native"
+    ],
+    "experiments": {
+      "typedRoutes": false
+    }
+  }
+}
