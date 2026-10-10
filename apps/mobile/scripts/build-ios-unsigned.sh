@@ -36,7 +36,7 @@ test -s "$app/main.jsbundle"
 test -d "$app/Metadata.appintents"
 test -n "$(find "$app/Metadata.appintents" -type f -size +0c -print -quit)"
 executable="$(/usr/libexec/PlistBuddy -c 'Print CFBundleExecutable' "$app/Info.plist")"
-lipo -verify_arch arm64 "$app/$executable"
+lipo "$app/$executable" -verify_arch arm64
 mkdir -p "$build_root/Payload" build-artifacts
 ditto "$app" "$build_root/Payload/$(basename "$app")"
 (cd "$build_root" && /usr/bin/zip -qry so-vi-unsigned.ipa Payload)
