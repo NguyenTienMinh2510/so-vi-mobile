@@ -9,7 +9,8 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "local.sovi.moneytracker"
+      "bundleIdentifier": "local.sovi.moneytracker",
+      "infoPlist": { "CFBundleDisplayName": "So Vi" }
     },
     "plugins": [
       "expo-router",
