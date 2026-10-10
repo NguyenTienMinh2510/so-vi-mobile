@@ -1,5 +1,5 @@
 import AppIntents
-import SoViNative
+internal import SoViNative
 
 enum SoViImportSource: String, AppEnum {
   case sms, email, text
