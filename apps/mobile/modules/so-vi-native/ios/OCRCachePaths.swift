@@ -5,9 +5,19 @@ struct OCRCachePaths {
   static func cacheDirectory(_ cache: URL, subdirectory: String) throws -> URL {
     guard cache.isFileURL, !subdirectory.isEmpty, ![".", ".."].contains(subdirectory), !subdirectory.contains("/"), !subdirectory.contains("\\") else { throw invalid() }
     // Only the platform-supplied cache parent may have an alias, never an app-owned child.
-    let canonical = cache.resolvingSymlinksInPath().standardizedFileURL.appendingPathComponent(subdirectory, isDirectory: true)
+    let manager = FileManager.default
+    let parent = cache.resolvingSymlinksInPath().standardizedFileURL
+    guard (try manager.attributesOfItem(atPath: parent.path))[.type] as? FileAttributeType == .typeDirectory else { throw invalid() }
+    let canonical = parent.appendingPathComponent(subdirectory, isDirectory: true)
+    let attributes: [FileAttributeKey: Any]
+    do { attributes = try manager.attributesOfItem(atPath: canonical.path) }
+    catch let error as NSError {
+      guard error.domain == NSCocoaErrorDomain, error.code == NSFileReadNoSuchFileError else { throw error }
+      return canonical
+    }
+    guard attributes[.type] as? FileAttributeType == .typeDirectory else { throw invalid() }
     let supplied = cache.standardizedFileURL.appendingPathComponent(subdirectory, isDirectory: true)
-    guard supplied.resolvingSymlinksInPath().standardizedFileURL.path == canonical.path, canonical.resolvingSymlinksInPath().standardizedFileURL.path == canonical.path, (try? supplied.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) != true else { throw invalid() }
+    guard supplied.resolvingSymlinksInPath().standardizedFileURL.path == canonical.path, canonical.resolvingSymlinksInPath().standardizedFileURL.path == canonical.path else { throw invalid() }
     return canonical
   }
   static func ownedFile(_ uri: String, cache: URL, subdirectory: String?, requireUUID: Bool = false) throws -> URL {
