@@ -1,7 +1,7 @@
 import React from 'react';
 import { Text, View } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
-import { type Kind, parseMoneyInput, dateRange } from './domain';
+import { type Kind, type Command, parseMoneyInput, dateRange } from './domain';
 import { newId, useLedger } from './store';
 import { Button, Card, Choice, Field, FormFooter, Page, localInput, parseLocalInput, styles, toggle, useDraft } from './ui';
 
@@ -15,8 +15,26 @@ function effective(value: string, timezone: string, old?: string) { return old &
 
 export function OnboardingScreen() {
   const store = useLedger(); const timezone = store.ledger.settings.timezone;
-  const draft = useDraft({ name: 'Tiền mặt', amount: '0', timezone }); const value = (key: string) => String(draft.values[key]); const walletId = React.useRef(newId());
-  return <Page title="Chào mừng đến Sổ Ví"><Text style={styles.text}>Ghi thu chi bằng VND, lưu trên điện thoại. Bạn có thể dùng các chức năng cốt lõi không cần tài khoản online.</Text><Card><Text style={styles.heading}>Tạo ví đầu tiên</Text><Field label="Tên ví" value={value('name')} onChangeText={text => draft.set('name', text)} error={draft.errors.name} /><Field label="Số dư ban đầu (có thể âm)" value={value('amount')} keyboardType="numbers-and-punctuation" onChangeText={text => draft.set('amount', text)} error={draft.errors.amount} /><Field label="Múi giờ IANA" value={value('timezone')} autoCapitalize="none" onChangeText={text => draft.set('timezone', text)} error={draft.errors.timezone} /><Text style={styles.secondary}>Mặc định Việt Nam: Asia/Ho_Chi_Minh. Múi giờ quyết định nhóm ngày và kỳ ngân sách.</Text><FormFooter draft={draft} /><Button title={draft.busy ? 'Đang tạo ví…' : 'Bắt đầu'} disabled={draft.busy} onPress={() => void draft.save(mutationId => ({ type: 'wallet.create', mutationId, payload: { id: walletId.current, name: value('name').trim(), icon: 'wallet', openingBalance: parseMoneyInput(value('amount')), openingAt: parseLocalInput(localInput(new Date().toISOString(), value('timezone')), value('timezone')), archived: false } }), async result => { await store.execute({ type: 'settings.update', mutationId: `${walletId.current}-settings`, payload: { timezone: value('timezone'), onboarded: true } }, result.revision); })} /></Card><Button title="Khôi phục từ backup" secondary icon="download" disabled={draft.busy} onPress={() => router.push('/backup')} /><Text style={styles.secondary}>Trước khi dùng dữ liệu thật, chạy kiểm tra SQLite trong Thêm → Kiểm tra thiết bị và thử export/restore. Expo Go là môi trường thử nghiệm; dữ liệu không tự chuyển sang app riêng.</Text></Page>;
+  // A retained wallet is shown explicitly; never infer that an arbitrary first row belongs to this draft.
+  const retainedWallet = store.ledger.wallets.length === 1 ? store.ledger.wallets[0] : undefined;
+  const verifiedWallet = retainedWallet && store.ledger.receipts.some(receipt => { try { const command = JSON.parse(receipt.signature); return command.type === 'wallet.create' && ['id', 'name', 'icon', 'openingBalance', 'openingAt', 'archived'].every(key => command.payload?.[key] === retainedWallet[key as keyof typeof retainedWallet]); } catch { return false; } }) ? retainedWallet : undefined;
+  const draft = useDraft({ name: 'Tiền mặt', amount: '0', timezone }); const value = (key: string) => String(draft.values[key]); const walletId = React.useRef(verifiedWallet?.id ?? newId());
+  const creation = React.useRef<Command | null>(null); const committed = React.useRef(false); const creationTimezone = React.useRef('');
+  const completing = store.ledger.wallets.length > 0 || committed.current;
+  const change = (key: string, next: string) => { if (!committed.current && !store.ledger.wallets.length) creation.current = null; draft.set(key, next); };
+  const start = () => void draft.save(mutationId => {
+    // Resolve and validate the timezone before the first persisted wallet command.
+    const openingAt = parseLocalInput(localInput(new Date().toISOString(), value('timezone')), value('timezone'));
+    if (completing) return { type: 'settings.update', mutationId: `${walletId.current}-settings`, payload: { timezone: value('timezone'), onboarded: true } };
+    if (!creation.current) { creationTimezone.current = value('timezone'); creation.current = { type: 'wallet.create', mutationId, payload: { id: walletId.current, name: value('name').trim(), icon: 'wallet', openingBalance: parseMoneyInput(value('amount')), openingAt, archived: false } }; }
+    return creation.current;
+  }, async result => {
+    if (result.ledger.settings.onboarded) return;
+    committed.current = true;
+    try { await store.execute({ type: 'settings.update', mutationId: `${walletId.current}-settings`, payload: { timezone: creationTimezone.current || value('timezone'), onboarded: true } }, result.revision); }
+    catch (error) { await draft.reload(); throw error; }
+  });
+  return <Page title="Chào mừng đến Sổ Ví"><Text style={styles.text}>Ghi thu chi bằng VND, lưu trên điện thoại. Bạn có thể dùng các chức năng cốt lõi không cần tài khoản online.</Text><Card><Text style={styles.heading}>{completing ? 'Hoàn tất thiết lập' : 'Tạo ví đầu tiên'}</Text>{completing ? <><Text style={styles.text}>Sổ đã có {store.ledger.wallets.length} ví. Các ví và số dư được giữ nguyên; Bắt đầu chỉ hoàn tất múi giờ và mở sổ.</Text>{store.ledger.wallets.map(wallet => <Text key={wallet.id} style={styles.secondary}>{wallet.name} · số dư ban đầu {wallet.openingBalance} VND</Text>)}</> : <><Field label="Tên ví" value={value('name')} onChangeText={text => change('name', text)} error={draft.errors.name} /><Field label="Số dư ban đầu (có thể âm)" value={value('amount')} keyboardType="numbers-and-punctuation" onChangeText={text => change('amount', text)} error={draft.errors.amount} /></>}<Field label="Múi giờ IANA" value={value('timezone')} onChangeText={text => change('timezone', text)} error={draft.errors.timezone} /><Text style={styles.secondary}>Mặc định Việt Nam: Asia/Ho_Chi_Minh. Múi giờ quyết định nhóm ngày và kỳ ngân sách.</Text><FormFooter draft={draft} /><Button title={draft.busy ? 'Đang lưu…' : 'Bắt đầu'} disabled={draft.busy} onPress={start} /></Card><Button title="Khôi phục từ backup" secondary icon="download" disabled={draft.busy} onPress={() => router.push('/backup')} /><Text style={styles.secondary}>Trước khi dùng dữ liệu thật, chạy kiểm tra SQLite trong Thêm → Kiểm tra thiết bị và thử export/restore. Expo Go là môi trường thử nghiệm; dữ liệu không tự chuyển sang app riêng.</Text></Page>;
 }
 
 export function WalletForm() {

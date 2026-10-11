@@ -4,8 +4,14 @@ import * as ImagePicker from 'expo-image-picker';
 import type { NativeInboxBridge } from './native-import';
 
 type OcrResult = { text: string; languages: string[]; warnings: string[] };
-type NativeBridge = NativeInboxBridge & { recognizeTextAsync: (uri: string) => Promise<OcrResult>; clearOcrCacheAsync: () => Promise<void>; removeImageCopyAsync: (uri: string) => Promise<void>; addListener: (name: 'inboxChanged', listener: () => void) => { remove: () => void } };
+type NativeBridge = NativeInboxBridge & { pendingSharedImportsAsync?: () => Promise<unknown[]>; acknowledgeSharedImportAsync?: (id: string) => Promise<void>; sharedInboxStatus?: () => Promise<{ available: boolean; error: string }>; recognizeTextAsync: (uri: string) => Promise<OcrResult>; clearOcrCacheAsync: () => Promise<void>; removeImageCopyAsync: (uri: string) => Promise<void>; addListener: (name: 'inboxChanged', listener: () => void) => { remove: () => void } };
 export const nativeImportBridge = requireOptionalNativeModule<NativeBridge>('SoViNative');
+export const sharedNativeImportBridge: NativeInboxBridge | null = nativeImportBridge?.pendingSharedImportsAsync && nativeImportBridge?.acknowledgeSharedImportAsync ? { pendingImportsAsync: () => nativeImportBridge.pendingSharedImportsAsync!(), acknowledgeImportAsync: id => nativeImportBridge.acknowledgeSharedImportAsync!(id) } : null;
+export async function sharedInboxStatus(): Promise<{ available: boolean; error: string }> {
+  if (!nativeImportBridge?.sharedInboxStatus || !sharedNativeImportBridge) return { available: false, error: 'Chia sẻ cần bản iOS riêng có extension. Expo Go không hỗ trợ nhận từ bảng chia sẻ.' };
+  try { const status = await nativeImportBridge.sharedInboxStatus(); if (typeof status?.available !== 'boolean' || typeof status.error !== 'string') throw new Error('Không đọc được trạng thái vùng dữ liệu chia sẻ.'); return status; }
+  catch (error) { return { available: false, error: error instanceof Error ? error.message : 'Không truy cập được vùng dữ liệu chia sẻ. Nội dung gốc được giữ.' }; }
+}
 export const isNativeImportAvailable = () => nativeImportBridge !== null;
 export function observeNativeImports(listener: () => void): () => void {
   const subscription = nativeImportBridge?.addListener('inboxChanged', listener);

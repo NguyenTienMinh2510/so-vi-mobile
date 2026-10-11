@@ -1,0 +1,71 @@
+import Foundation
+
+// Compile with the actual OCRCachePaths.swift on macOS; all files below are disposable fixtures.
+@main struct OCRCacheCheck {
+  static func main() throws {
+    let manager = FileManager.default
+    let root = manager.temporaryDirectory.resolvingSymlinksInPath().appendingPathComponent("sovi-ocr-cache-check-" + UUID().uuidString, isDirectory: true)
+    try manager.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? manager.removeItem(at: root) }
+    func reject(_ label: String, _ action: () throws -> Void) {
+      do { try action(); fatalError("Expected rejection: " + label) } catch { }
+    }
+    func check(_ condition: @autoclosure () throws -> Bool) rethrows { let result = try condition(); assert(result) }
+    func write(_ url: URL) throws { try Data("fixture-image".utf8).write(to: url) }
+    let actualParent = root.appendingPathComponent("real", isDirectory: true)
+    let cache = actualParent.appendingPathComponent("Caches", isDirectory: true)
+    let outside = root.appendingPathComponent("outside", isDirectory: true)
+    let alias = root.appendingPathComponent("parent-alias", isDirectory: true)
+    try manager.createDirectory(at: cache, withIntermediateDirectories: true)
+    try manager.createDirectory(at: outside, withIntermediateDirectories: true)
+    try manager.createSymbolicLink(at: alias, withDestinationURL: actualParent)
+    let trusted = alias.appendingPathComponent("Caches", isDirectory: true)
+    let ocr = cache.appendingPathComponent("SoViOCR", isDirectory: true)
+    let picker = cache.appendingPathComponent("ImagePicker", isDirectory: true)
+    try manager.createDirectory(at: ocr, withIntermediateDirectories: true)
+    try manager.createDirectory(at: picker, withIntermediateDirectories: true)
+    let image = ocr.appendingPathComponent("read.image"); try write(image)
+    let aliasedImage = trusted.appendingPathComponent("SoViOCR/read.image")
+    try check(OCRCachePaths.cacheDirectory(trusted, subdirectory: "SoViOCR") == ocr)
+    try check(OCRCachePaths.ownedFile(aliasedImage.absoluteString, cache: trusted, subdirectory: "SoViOCR") == image)
+    try check(OCRCachePaths.ownedFile(image.absoluteString, cache: trusted, subdirectory: "SoViOCR") == image)
+    let external = outside.appendingPathComponent("private.image"); try write(external)
+    let sibling = cache.appendingPathComponent("SoViOCR-other", isDirectory: true); try manager.createDirectory(at: sibling, withIntermediateDirectories: true)
+    let siblingImage = sibling.appendingPathComponent("read.image"); try write(siblingImage)
+    for (label, uri) in [
+      ("https", "https://example.test/image"), ("host", "file://localhost" + image.path),
+      ("query", image.absoluteString + "?copy=1"), ("fragment", image.absoluteString + "#image"),
+      ("outside", external.absoluteString), ("sibling", siblingImage.absoluteString),
+      ("traversal", trusted.absoluteString + "SoViOCR/../SoViOCR/read.image"),
+      ("encoded traversal", trusted.absoluteString + "SoViOCR/%2e%2e/SoViOCR/read.image")
+    ] { reject(label) { _ = try OCRCachePaths.ownedFile(uri, cache: trusted, subdirectory: "SoViOCR") } }
+    let fileLink = ocr.appendingPathComponent("link.image"); try manager.createSymbolicLink(at: fileLink, withDestinationURL: image)
+    reject("file symlink") { _ = try OCRCachePaths.ownedFile(fileLink.absoluteString, cache: trusted, subdirectory: "SoViOCR") }
+    let untrustedAlias = root.appendingPathComponent("outside-alias", isDirectory: true); try manager.createSymbolicLink(at: untrustedAlias, withDestinationURL: cache)
+    reject("untrusted alias into approved cache") { _ = try OCRCachePaths.ownedFile(untrustedAlias.appendingPathComponent("SoViOCR/read.image").absoluteString, cache: trusted, subdirectory: "SoViOCR") }
+    for child in ["SoViOCR", "ImagePicker"] {
+      let linkedCache = root.appendingPathComponent("linked-" + child, isDirectory: true); try manager.createDirectory(at: linkedCache, withIntermediateDirectories: true)
+      let linkedChild = linkedCache.appendingPathComponent(child, isDirectory: true); try manager.createSymbolicLink(at: linkedChild, withDestinationURL: outside)
+      reject("child directory symlink") { _ = try OCRCachePaths.cacheDirectory(linkedCache, subdirectory: child) }
+      reject("file through child directory symlink") { _ = try OCRCachePaths.ownedFile(linkedChild.appendingPathComponent("private.image").absoluteString, cache: linkedCache, subdirectory: child) }
+      let internalCache = root.appendingPathComponent("internal-link-" + child, isDirectory: true); try manager.createDirectory(at: internalCache, withIntermediateDirectories: true)
+      let internalDestination = internalCache.appendingPathComponent("real-child", isDirectory: true); try manager.createDirectory(at: internalDestination, withIntermediateDirectories: true)
+      let internalImage = internalDestination.appendingPathComponent("private.image"); try write(internalImage)
+      let internalChild = internalCache.appendingPathComponent(child, isDirectory: true); try manager.createSymbolicLink(at: internalChild, withDestinationURL: internalDestination)
+      reject("child symlink within cache") { _ = try OCRCachePaths.cacheDirectory(internalCache, subdirectory: child) }
+      reject("file through child symlink within cache") { _ = try OCRCachePaths.ownedFile(internalChild.appendingPathComponent("private.image").absoluteString, cache: internalCache, subdirectory: child) }
+    }
+    let copyDirectories: [String?] = [nil, "ImagePicker"]
+    for child in copyDirectories {
+      let directory = child == nil ? cache : picker
+      let owned = directory.appendingPathComponent(UUID().uuidString + ".jpg"); try write(owned)
+      let nonOwned = directory.appendingPathComponent("family-photo.jpg"); try write(nonOwned)
+      let allowed = try OCRCachePaths.ownedFile(owned.absoluteString, cache: trusted, subdirectory: child, requireUUID: true)
+      assert(allowed == owned); try manager.removeItem(at: allowed)
+      reject("non UUID original") { _ = try OCRCachePaths.ownedFile(nonOwned.absoluteString, cache: trusted, subdirectory: child, requireUUID: true) }
+      assert(manager.fileExists(atPath: nonOwned.path)); assert(manager.fileExists(atPath: external.path))
+      reject("outside owned UUID") { _ = try OCRCachePaths.ownedFile(outside.appendingPathComponent(UUID().uuidString + ".jpg").absoluteString, cache: trusted, subdirectory: child, requireUUID: true) }
+    }
+    print("PASS: trusted parent alias/canonical cache; child/file symlinks, nonfile/host/outside/sibling/traversal rejected; only owned UUID copies eligible for deletion")
+  }
+}

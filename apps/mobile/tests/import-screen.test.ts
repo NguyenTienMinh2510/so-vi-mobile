@@ -14,7 +14,7 @@ function screenHarness(nativeOptions?: { result: any }) {
   ledger.wallets = [{ id: 'cash', version: 1, name: 'Tiền mặt', icon: 'wallet', openingBalance: '1000000', openingAt: now, archived: false }];
   ledger.categories = [{ id: 'food', version: 1, name: 'Ăn uống', icon: 'restaurant', kind: 'expense', archived: false }];
   const commands: any[] = []; const exports: any = {}; const pending: Promise<void>[] = []; const drafts: any[] = []; let ocrCalls = 0;
-  const react = { createElement: (type: any, props: any, ...children: any[]) => ({ type, props: { ...props, children } }), useRef: (value: any) => ({ current: value }), useState: (value: any) => [value, () => {}] };
+  const react = { createElement: (type: any, props: any, ...children: any[]) => ({ type, props: { ...props, children } }), useRef: (value: any) => ({ current: value }), useState: (value: any) => [value, () => {}], useEffect: () => {} };
   const ui = { Page: 'Page', Card: 'Card', Choice: 'Choice', Button: 'Button', Empty: 'Empty', Field: 'Field', FormFooter: 'FormFooter', styles: {}, localInput: (value: string) => value, parseLocalInput: (value: string) => value,
     useDraft: (initial: any) => {
       const values = { ...initial }; const errors: any = {}; const draft = { values, errors, busy: false, set: (key: string, value: any) => { values[key] = value; }, save: (build: any, after?: any) => {
@@ -26,11 +26,13 @@ function screenHarness(nativeOptions?: { result: any }) {
     } };
   runInNewContext(code, { exports, Date, require: (name: string) => {
     if (name === 'react') return react;
-    if (name === 'react-native') return { Text: 'Text', Pressable: 'Pressable', FlatList: 'FlatList' };
+    if (name === 'react-native') return { Text: 'Text', Pressable: 'Pressable', FlatList: 'FlatList', AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) } };
+    if (name === 'expo-router') return { router: { push() {} }, useLocalSearchParams: () => ({ input: undefined }), useIsFocused: () => true };
     if (name === './domain') return domain;
     if (name === './import') return parser;
     if (name === './native') return { isNativeImportAvailable: () => !!nativeOptions, recognizeImportImage: async () => { ocrCalls++; return nativeOptions?.result ?? null; } };
-    if (name === 'expo-router/react-navigation') return { usePreventRemove: () => {} };
+    if (name === 'expo-router/react-navigation') return { usePreventRemove: () => {}, useIsFocused: () => true };
+    if (name === './app-lock') return { useAppLock: () => ({ covered: false, locked: false, busy: false, assertUnlocked: () => {} }) };
     if (name === './ui') return ui;
     if (name === './store') return { newId: () => `id-${++sequence}`, useLedger: () => ({ ledger }), errorMessage: (e: Error) => e.message };
     if (name === './forms') return { useRecordId: () => ({ id: ledger.importedEvents[0]?.id, invalid: false }) };

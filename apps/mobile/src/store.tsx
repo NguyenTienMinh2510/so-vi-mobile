@@ -3,7 +3,7 @@ import { AppState } from 'react-native';
 import { openRepository, type LedgerRepository, type LoadedLedger } from './database';
 import { type Backup, type Command } from './domain';
 import { drainNativeImports } from './native-import';
-import { nativeImportBridge, observeNativeImports } from './native';
+import { nativeImportBridge, sharedNativeImportBridge, sharedInboxStatus, observeNativeImports } from './native';
 import { useAppLock } from './app-lock';
 
 export const newId = () => `id-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 12)}`;
@@ -17,16 +17,24 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const draining = useRef<Promise<void> | null>(null); const drainAgain = useRef(false);
   const update = (result: LoadedLedger) => setLoaded(previous => previous && previous.revision > result.revision ? previous : result);
   const retryNativeImports = async () => {
-    if (!nativeImportBridge || !repository.current) return;
+    if ((!nativeImportBridge && !sharedNativeImportBridge) || !repository.current) return;
     drainAgain.current = true;
     if (draining.current) return draining.current;
     const repo = repository.current;
     draining.current = (async () => {
       try {
-        do { drainAgain.current = false; const result = await drainNativeImports(nativeImportBridge, repo); if (repository.current === repo) { update(result); setNativeImportError(''); } } while (drainAgain.current && repository.current === repo);
+        do {
+          drainAgain.current = false; const errors: string[] = [];
+          if (nativeImportBridge) { try { const result = await drainNativeImports(nativeImportBridge, repo); if (repository.current === repo) update(result); } catch { errors.push('Chưa nhận hoặc phân tích hết nội dung Shortcuts. Bản chưa nhận được giữ trong hàng chờ; bản đã nhận nằm trong Inbox. Chọn Thử nhận lại hoặc mở mục Mới nhận để phân tích.'); } }
+          if (sharedNativeImportBridge) {
+            try { const status = await sharedInboxStatus(); if (!status.available) throw new Error(status.error); const result = await drainNativeImports(sharedNativeImportBridge, repo); if (repository.current === repo) update(result); }
+            catch { errors.push('Chưa nhận hoặc phân tích hết nội dung chia sẻ. Bản chưa nhận được giữ trong vùng dữ liệu chung; bản đã nhận nằm trong Inbox. Chọn Thử nhận lại; Shortcuts vẫn có hàng chờ riêng.'); }
+          }
+          if (repository.current === repo) { setNativeImportError(errors.join('\n')); if (errors.length) { try { const current = await repo.load(); if (repository.current === repo) update(current); } catch { /* Preserve the existing loaded ledger when ingress refresh fails. */ } } }
+        } while (drainAgain.current && repository.current === repo);
       } catch {
         if (repository.current === repo) {
-          setNativeImportError('Chưa nhận hoặc phân tích hết nội dung Shortcuts. Bản chưa nhận được giữ trong hàng chờ; bản đã nhận nằm trong Inbox. Chọn Thử nhận lại, hoặc mở mục Mới nhận để phân tích.');
+          setNativeImportError('Chưa nhận hết nội dung Shortcuts hoặc chia sẻ. Hàng chờ gốc được giữ; bản đã nhận nằm trong Inbox. Chọn Thử nhận lại hoặc mở mục Mới nhận để phân tích.');
           try { const current = await repo.load(); if (repository.current === repo) update(current); } catch { /* Keep ingress errors separate from opening the ledger. */ }
         }
       } finally { draining.current = null; }

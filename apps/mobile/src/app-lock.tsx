@@ -24,6 +24,7 @@ export function AppLockProvider({ children }: { children: ReactNode }) {
   const live = useRef(session); const epoch = useRef(0); const mounted = useRef(true);
   const pending = useRef<Promise<void> | null>(null); const prompting = useRef(false); const ownInactive = useRef(false); const writing = useRef(false); const privacyReady = useRef(false);
   const titleRef = useRef<Text | null>(null);
+  const cancelForegroundWait = useRef<(() => void) | null>(null);
   const change = useCallback((patch: Partial<Session>) => {
     if (!mounted.current) return;
     const next = { ...live.current, ...patch };
@@ -90,6 +91,18 @@ export function AppLockProvider({ children }: { children: ReactNode }) {
     try { assertUnlocked(); } catch (error) { change({ error: (error as Error).message }); return Promise.resolve(); }
     return run(async generation => {
       if (!await authenticate(generation)) return;
+      if (ownInactive.current && live.current.appState === 'inactive' && AppState.currentState === 'inactive') await new Promise<void>((resolve, reject) => {
+        let subscription: ReturnType<typeof AppState.addEventListener> | undefined;
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const finish = (error?: Error) => { subscription?.remove(); if (timer !== undefined) clearTimeout(timer); cancelForegroundWait.current = null; if (error) reject(error); else resolve(); };
+        cancelForegroundWait.current = () => finish(new Error('Xác minh bị gián đoạn. Cài đặt chưa đổi; chọn Thử lại.'));
+        subscription = AppState.addEventListener('change', state => {
+          if (state === 'active' && current(generation) && live.current.appState === 'active') finish();
+          else finish(new Error('Xác minh bị gián đoạn. Cài đặt chưa đổi; chọn Thử lại.'));
+        });
+        timer = setTimeout(() => finish(new Error('Ứng dụng chưa hoạt động trở lại. Cài đặt chưa đổi; chọn Thử lại.')), 5000);
+      });
+      if (!current(generation)) return;
       if (live.current.appState !== 'active' || AppState.currentState !== 'active') throw new Error('Ứng dụng chưa hoạt động trở lại. Cài đặt chưa đổi; chọn Thử lại trước khi đổi khóa ứng dụng.');
       if (enabled) await preparePrivacy();
       if (!current(generation)) return;
@@ -113,7 +126,7 @@ export function AppLockProvider({ children }: { children: ReactNode }) {
       } else change({ appState, ...(live.current.enabled === false && !live.current.needsRead && !live.current.error ? { locked: false } : {}) });
     });
     void retry();
-    return () => { mounted.current = false; epoch.current++; prompting.current = false; subscription.remove(); };
+    return () => { mounted.current = false; epoch.current++; prompting.current = false; subscription.remove(); cancelForegroundWait.current?.(); };
   }, []);
   const covered = session.locked || session.busy || session.needsRead || session.enabled === null || session.appState !== 'active' || AppState.currentState !== 'active';
   useEffect(() => {
@@ -123,8 +136,8 @@ export function AppLockProvider({ children }: { children: ReactNode }) {
   return <Context.Provider value={value}><View style={{ flex: 1, backgroundColor: colors.background }}>
     {session.admitted && <View style={{ flex: 1 }} pointerEvents={covered ? 'none' : 'auto'} accessibilityElementsHidden={covered} importantForAccessibility={covered ? 'no-hide-descendants' : 'auto'}>{children}</View>}
     {covered && <View accessibilityViewIsModal pointerEvents="auto" style={[StyleSheet.absoluteFill, { backgroundColor: colors.background }]}><Page title="Sổ Ví"><Card>
-      <Text ref={titleRef} accessibilityRole="header" style={styles.heading}>{session.busy ? 'Đang xác minh…' : 'Sổ Ví đang được khóa'}</Text>
-      <Text style={styles.text}>Mở khóa bằng Face ID hoặc mật mã iPhone. Dữ liệu và bản nháp được giữ trên điện thoại.</Text>
+      <Text ref={titleRef} accessibilityRole="header" style={styles.heading}>{session.enabled === null || session.needsRead ? 'Đang đọc cài đặt bảo mật' : session.enabled ? session.busy ? 'Đang xác minh…' : 'Sổ Ví đang được khóa' : 'Khóa ứng dụng đang tắt'}</Text>
+      <Text style={styles.text}>{session.enabled === true && !session.needsRead ? 'Mở khóa bằng Face ID hoặc mật mã iPhone.' : session.enabled === false && !session.needsRead ? 'Khóa đang tắt nên Sổ Ví không yêu cầu Face ID. Chọn Thử lại để mở sổ sau thao tác bị gián đoạn.' : 'Chưa đọc xong cài đặt khóa. Dữ liệu chưa được mở; chọn Thử lại nếu cần.'} Dữ liệu và bản nháp được giữ trên điện thoại.</Text>
       {!!session.error && <Text accessibilityRole="alert" style={styles.error}>{session.error}</Text>}
       {session.enabled === true && !session.needsRead && <Button title="Mở khóa Sổ Ví" disabled={session.busy || session.appState !== 'active'} onPress={() => void unlock()} />}
       <Button title="Thử lại" secondary disabled={session.busy || session.appState !== 'active'} onPress={() => void retry()} />

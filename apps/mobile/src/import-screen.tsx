@@ -1,11 +1,12 @@
-import React, { useRef, useState } from 'react';
-import { FlatList, Pressable, Text } from 'react-native';
-import { router } from 'expo-router';
+import React, { useEffect, useRef, useState } from 'react';
+import { AppState, FlatList, Pressable, Text } from 'react-native';
+import { router, useIsFocused, useLocalSearchParams } from 'expo-router';
 import { formatMoney, parseMoneyInput, type ImportedEvent, type Kind } from './domain';
 import { MAX_IMPORT_TEXT } from './import';
-import { isNativeImportAvailable, recognizeImportImage } from './native';
+import { isNativeImportAvailable, recognizeImportImage, sharedInboxStatus } from './native';
 import { errorMessage, newId, useLedger } from './store';
 import { useRecordId } from './forms';
+import { useAppLock } from './app-lock';
 import { Button, Card, Choice, Empty, Field, FormFooter, Page, localInput, parseLocalInput, styles, toggle, useDraft } from './ui';
 
 const classifications = { payment_success: 'Thanh toán / chuyển cho người khác', pending_order: 'Đơn chờ / thanh toán chưa thành công', internal_transfer: 'Đề xuất chuyển giữa ví của bạn', refund: 'Hoàn tiền', balance_update: 'Thông báo số dư', ignored: 'Chưa nhận diện' };
@@ -14,19 +15,28 @@ function status(event: ImportedEvent) { return event.ignored ? 'Đã bỏ qua' :
 
 export function InboxScreen() {
   const store = useLedger(); const [refreshing, setRefreshing] = useState(false); const [error, setError] = useState('');
+  const [shareStatus, setShareStatus] = useState<{ available: boolean; error: string } | null>(null);
+  useEffect(() => { let active = true; const refreshStatus = () => { void sharedInboxStatus().then(value => { if (active) setShareStatus(value); }); }; refreshStatus(); const subscription = AppState.addEventListener('change', state => { if (state === 'active') refreshStatus(); }); return () => { active = false; subscription.remove(); }; }, []);
   const events = [...store.ledger.importedEvents].sort((a, b) => b.receivedAt.localeCompare(a.receivedAt) || b.id.localeCompare(a.id));
-  const refresh = async () => { setRefreshing(true); setError(''); try { await store.retryNativeImports(); await store.refresh(); } catch (e) { setError(errorMessage(e)); } finally { setRefreshing(false); } };
-  return <Page title="Inbox" back scroll={false}><FlatList data={events} keyExtractor={event => event.id} contentContainerStyle={styles.content} refreshing={refreshing} onRefresh={() => void refresh()} ListHeaderComponent={<><Text style={styles.secondary}>Dán SMS, email hoặc văn bản để phân tích trên điện thoại. Luôn duyệt trước khi ghi sổ; nội dung không được gửi lên cloud.</Text><Text style={styles.secondary}>{isNativeImportAvailable() ? 'Shortcuts lưu SMS/email bạn chọn vào Inbox và phân tích khi mở app. Luôn mở mục để duyệt trước khi ghi sổ.' : 'OCR và Shortcuts cần bản iOS riêng; Expo Go chỉ nhận văn bản dán.'}</Text>{store.nativeImportError && <Text accessibilityRole="alert" style={styles.error}>{store.nativeImportError}</Text>}{isNativeImportAvailable() && <Button title="Thử nhận lại từ Shortcuts" secondary disabled={refreshing} onPress={() => void refresh()} />}<Button title="Dán nội dung mới" icon="add" onPress={() => router.push('/import-text')} />{error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}</>} ListEmptyComponent={<Empty text="Chưa có nội dung. Dán thông báo để bắt đầu. Mở nội dung đã lưu, chọn Phân tích rồi duyệt kết quả." />} renderItem={({ item }) => <Pressable accessibilityRole="button" accessibilityLabel={`${status(item)}, ${item.provider}, ${item.amount ? formatMoney(item.amount) : 'Chưa có số tiền'}`} style={styles.card} onPress={() => router.push({ pathname: '/import-review', params: { id: item.id } })}><Text style={styles.heading}>{status(item)}</Text><Text style={styles.secondary}>{item.provider} · {localInput(item.receivedAt, store.ledger.settings.timezone)}</Text>{item.classification && <Text style={styles.text}>{classifications[item.classification]}</Text>}{item.amount && <Text style={styles.amount}>{formatMoney(item.amount)}</Text>}<Text numberOfLines={2} style={styles.secondary}>{item.text}</Text></Pressable>} /></Page>;
+  const refresh = async () => { setRefreshing(true); setError(''); try { setShareStatus(await sharedInboxStatus()); await store.retryNativeImports(); await store.refresh(); } catch (e) { setError(errorMessage(e)); } finally { setRefreshing(false); } };
+  return <Page title="Inbox" back scroll={false}><FlatList data={events} keyExtractor={event => event.id} contentContainerStyle={styles.content} refreshing={refreshing} onRefresh={() => void refresh()} ListHeaderComponent={<><Text style={styles.secondary}>{shareStatus === null ? 'Đang kiểm tra chia sẻ vào Inbox…' : shareStatus.available ? 'Chia sẻ một ảnh hoặc văn bản → Share to So Vi. Kiểm tra, sửa và Lưu vào Inbox, rồi mở Sổ Ví để phân tích và duyệt.' : shareStatus.error}</Text><Text style={styles.secondary}>Hàng chờ chia sẻ và Shortcuts chưa nhận không nằm trong backup JSON. Nhận vào Inbox trước khi xuất; chưa ghi tiền khi chia sẻ.</Text><Text style={styles.secondary}>Dán SMS, email hoặc văn bản để phân tích trên điện thoại. Luôn duyệt trước khi ghi sổ; nội dung không được gửi lên cloud.</Text><Text style={styles.secondary}>{isNativeImportAvailable() ? 'Shortcuts lưu SMS/email bạn chọn vào Inbox và phân tích khi mở app. Luôn mở mục để duyệt trước khi ghi sổ.' : 'OCR và Shortcuts cần bản iOS riêng; Expo Go chỉ nhận văn bản dán.'}</Text>{store.nativeImportError && <Text accessibilityRole="alert" style={styles.error}>{store.nativeImportError}</Text>}{isNativeImportAvailable() && <Button title="Thử nhận lại Shortcuts / chia sẻ" secondary disabled={refreshing} onPress={() => void refresh()} />}<Button title="Dán nội dung mới" icon="add" onPress={() => router.push('/import-text')} />{error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}</>} ListEmptyComponent={<Empty text="Chưa có nội dung. Dán thông báo để bắt đầu. Mở nội dung đã lưu, chọn Phân tích rồi duyệt kết quả." />} renderItem={({ item }) => <Pressable accessibilityRole="button" accessibilityLabel={`${status(item)}, ${item.provider}, ${item.amount ? formatMoney(item.amount) : 'Chưa có số tiền'}`} style={styles.card} onPress={() => router.push({ pathname: '/import-review', params: { id: item.id } })}><Text style={styles.heading}>{status(item)}</Text><Text style={styles.secondary}>{item.provider} · {localInput(item.receivedAt, store.ledger.settings.timezone)}</Text>{item.classification && <Text style={styles.text}>{classifications[item.classification]}</Text>}{item.amount && <Text style={styles.amount}>{formatMoney(item.amount)}</Text>}<Text numberOfLines={2} style={styles.secondary}>{item.text}</Text></Pressable>} /></Page>;
 }
 
 export function ImportTextScreen() {
+  const { input } = useLocalSearchParams(); const focused = useIsFocused(); const lock = useAppLock();
+  const [foreground, setForeground] = useState(AppState.currentState === 'active'); const entryConsumed = useRef(false);
+  const focusedNow = useRef(focused); focusedNow.current = focused;
+  useEffect(() => { const subscription = AppState.addEventListener('change', state => setForeground(state === 'active')); return () => subscription.remove(); }, []);
   const id = useRef(newId()); const receivedAt = useRef(new Date().toISOString());
   const [ocrBusy, setOcrBusy] = useState(false); const [ocrError, setOcrError] = useState(''); const [ocrWarnings, setOcrWarnings] = useState<string[]>([]); const ocrLocked = useRef(false);
   const draft = useDraft({ source: 'text', provider: 'Dán thủ công', sourceId: '', text: '', ocrText: '' }, undefined, ocrBusy); const value = (key: string) => String(draft.values[key]);
+  const draftBusy = useRef(draft.busy); draftBusy.current = draft.busy;
   const recognize = async (camera: boolean) => {
-    if (ocrLocked.current || draft.busy) return;
-    ocrLocked.current = true; setOcrBusy(true); setOcrError('');
+    if (ocrLocked.current || draftBusy.current) return;
     try {
+      lock.assertUnlocked();
+      if (!focusedNow.current || AppState.currentState !== 'active' || !isNativeImportAvailable()) return;
+      ocrLocked.current = true; setOcrBusy(true); setOcrError('');
       const result = await recognizeImportImage(camera);
       if (result) {
         if (!result.text.trim()) { setOcrError('Không tìm thấy chữ trong ảnh. Chọn ảnh rõ hơn hoặc dán nội dung; bản nháp được giữ.'); }
@@ -35,6 +45,13 @@ export function ImportTextScreen() {
     } catch (e) { setOcrError(errorMessage(e)); }
     finally { ocrLocked.current = false; setOcrBusy(false); }
   };
+  const entry = input === 'camera' || input === 'photo' ? input : null;
+  const clean = value('source') === 'text' && value('provider') === 'Dán thủ công' && !value('sourceId') && !value('text') && !value('ocrText');
+  useEffect(() => {
+    if (entryConsumed.current || !entry || !focused || !foreground || AppState.currentState !== 'active' || lock.covered || lock.busy || draft.busy || ocrBusy || !clean || !isNativeImportAvailable()) return;
+    entryConsumed.current = true;
+    void recognize(entry === 'camera');
+  }, [entry, focused, foreground, lock.covered, lock.busy, draft.busy, ocrBusy, clean]);
   const ocr = <Card><Text style={styles.heading}>Nhận diện ảnh trên điện thoại</Text><Text style={styles.secondary}>Chỉ đọc ảnh bạn chọn bằng Apple Vision trên thiết bị. Không gửi ảnh lên cloud. Bản ảnh tạm được xóa sau khi đọc; ảnh gốc trong Photos được giữ. Hãy kiểm tra số tiền, mã tham chiếu và ngày trước khi ghi sổ.</Text>{isNativeImportAvailable() ? <><Button title={ocrBusy ? 'Đang nhận diện…' : 'Chọn ảnh để nhận diện'} secondary disabled={ocrBusy || draft.busy} onPress={() => void recognize(false)} /><Button title="Chụp ảnh để nhận diện" secondary disabled={ocrBusy || draft.busy} onPress={() => void recognize(true)} /></> : <Text style={styles.secondary}>Expo Go chưa có Apple Vision. Dùng bản iOS riêng để nhận diện ảnh; vẫn có thể dán văn bản bên dưới.</Text>}{ocrError && <Text accessibilityRole="alert" style={styles.error}>{ocrError}</Text>}{ocrWarnings.map(warning => <Text key={warning} style={styles.error}>{warning}</Text>)}{value('ocrText') !== '' && <><Field label="Văn bản từ ảnh — kiểm tra và sửa" multiline value={value('ocrText')} onChangeText={text => draft.set('ocrText', text)} /><Text accessibilityLiveRegion="polite" style={styles.secondary}>{value('ocrText').length}/{MAX_IMPORT_TEXT} ký tự</Text>{value('ocrText').length > MAX_IMPORT_TEXT && <Text accessibilityRole="alert" style={styles.error}>Ảnh có hơn 4.000 ký tự. Nội dung được giữ nguyên; hãy rút gọn trước khi dùng.</Text>}<Button title="Dùng văn bản đã kiểm tra" secondary disabled={ocrBusy || draft.busy || !value('ocrText').trim() || value('ocrText').length > MAX_IMPORT_TEXT} onPress={() => { draft.set('text', value('ocrText')); draft.set('provider', 'Apple Vision'); draft.set('source', 'text'); draft.set('sourceId', ''); draft.set('ocrText', ''); }} /></>}</Card>;
   return <Page title="Dán nội dung" back><Text style={styles.secondary}>Chỉ dán văn bản cần ghi sổ, tối đa 4.000 ký tự. Sau khi lưu, mở nội dung trong Inbox và chọn Phân tích nội dung. Nguồn và tên ngân hàng giúp đối chiếu mã tham chiếu; app không tự đọc SMS hoặc email.</Text><Choice label="Nguồn" items={[{ id: 'text', name: 'Văn bản' }, { id: 'sms', name: 'SMS' }, { id: 'email', name: 'Email' }]} selected={[value('source')]} onSelect={key => draft.set('source', key)} /><Field label="Ngân hàng / nhà cung cấp" value={value('provider')} maxLength={200} onChangeText={text => draft.set('provider', text)} error={draft.errors.provider} /><Field label="ID nguồn (nếu có)" value={value('sourceId')} maxLength={200} autoCapitalize="none" onChangeText={text => draft.set('sourceId', text)} /><Field label="Nội dung SMS / email / văn bản" multiline value={value('text')} onChangeText={text => draft.set('text', text)} error={draft.errors.text} /><Text accessibilityLiveRegion="polite" style={styles.secondary}>{value('text').length}/{MAX_IMPORT_TEXT} ký tự</Text>{value('text').length > MAX_IMPORT_TEXT && <Text accessibilityRole="alert" style={styles.error}>Đã vượt giới hạn 4.000 ký tự. Hãy rút gọn trước khi lưu; bản dán được giữ nguyên.</Text>}<FormFooter draft={draft} />{ocr}<Button title={draft.busy ? 'Đang lưu…' : 'Lưu vào Inbox'} disabled={draft.busy || ocrBusy} onPress={() => void draft.save(mutationId => ({ type: 'import.receive', mutationId, payload: { id: id.current, source: value('source') as ImportedEvent['source'], provider: value('provider').trim(), sourceId: value('sourceId').trim() || null, text: value('text'), receivedAt: receivedAt.current } }))} /></Page>;
 }

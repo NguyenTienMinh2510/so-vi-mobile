@@ -39,7 +39,7 @@ export async function runNativeChecks(): Promise<string[]> {
     await execute({ type: 'import.process', mutationId: 'import-process', payload: { id: 'import-1', expectedVersion: 1 } });
     assert(balances(loaded.ledger).total === beforeImport && loaded.ledger.importedEvents[0].amount === '1000', 'Inbox phân biệt số tiền/số dư; chưa duyệt không đổi tài chính');
     const importConfirm: Command = { type: 'import.confirm', mutationId: 'import-confirm', payload: { id: 'import-1', expectedVersion: 2, entry: { type: 'transaction', payload: { id: 'import-tx', walletId: 'cash', categoryId: 'expense-food', kind: 'expense', amount: '1000', occurredAt: at, note: 'Test import', tagIds: [] } } } };
-    const priorImport = JSON.stringify(loaded);
+    const priorImport = JSON.stringify(await repo.load());
     await db.execAsync("CREATE TEMP TRIGGER fail_import BEFORE UPDATE ON imported_events WHEN NEW.state='imported' BEGIN SELECT RAISE(ABORT,'test import rollback'); END;");
     rejected = false; try { await execute(importConfirm); } catch { rejected = true; }
     assert(rejected && JSON.stringify(await repo.load()) === priorImport, 'Lỗi sau tạo giao dịch rollback Inbox, giao dịch, receipt và revision');

@@ -12,7 +12,7 @@ const attempt = async (operation: Promise<unknown>) => { try { await operation; 
 function harness(flag: unknown = '1', expoGo = false) {
   const require = createRequire(import.meta.url); const ts = require('typescript');
   const code = ts.transpileModule(readFileSync(new URL('../src/app-lock.tsx', import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.React, esModuleInterop: true } }).outputText;
-  const slots: any[] = []; const pendingEffects: (() => void)[] = []; const contexts: any[] = []; let cursor = 0; let dirty = true; let tree: any;
+  const slots: any[] = []; const pendingEffects: (() => void)[] = []; const contexts: any[] = []; let cursor = 0; let dirty = true; let tree: any; let unmounted = false; let updatesAfterUnmount = 0;
   const child = { type: 'PrivateDraft', props: { children: 'PRIVATE DRAFT' } }; const listeners = new Set<(state: string) => void>();
   const calls: string[] = []; let read: () => Promise<unknown> = async () => flag; let auth: () => Promise<any> = async () => ({ success: true });
   let privacy: () => Promise<void> = async () => {}; let write: (value: string) => Promise<void> = async value => { flag = value; };
@@ -27,7 +27,7 @@ function harness(flag: unknown = '1', expoGo = false) {
   };
   const react = { createContext: (value: any) => { const context = { value, Provider: Symbol('Provider') }; contexts.push(context); return context; }, createElement: element, Fragment: 'Fragment',
     useContext: (context: any) => context.value,
-    useState: (initial: any) => { const at = cursor++; if (!(at in slots)) slots[at] = typeof initial === 'function' ? initial() : initial; return [slots[at], (next: any) => { const value = typeof next === 'function' ? next(slots[at]) : next; if (!Object.is(slots[at], value)) { slots[at] = value; dirty = true; } }]; },
+    useState: (initial: any) => { const at = cursor++; if (!(at in slots)) slots[at] = typeof initial === 'function' ? initial() : initial; return [slots[at], (next: any) => { if (unmounted) { updatesAfterUnmount++; return; } const value = typeof next === 'function' ? next(slots[at]) : next; if (!Object.is(slots[at], value)) { slots[at] = value; dirty = true; } }]; },
     useRef: (initial: any) => { const at = cursor++; if (!(at in slots)) slots[at] = { current: initial }; return slots[at]; }, useEffect: effect, useLayoutEffect: effect,
     useMemo: (factory: () => any, deps: unknown[]) => { const at = cursor++; if (!slots[at] || deps.some((value, i) => !Object.is(value, slots[at].deps[i]))) slots[at] = { deps, value: factory() }; return slots[at].value; },
     useCallback: (callback: any, deps: unknown[]) => react.useMemo(() => callback, deps),
@@ -38,8 +38,8 @@ function harness(flag: unknown = '1', expoGo = false) {
     enableAppSwitcherProtectionAsync: async (intensity: number) => { switcherOptions.push(intensity); calls.push('switcher'); await privacy(); },
     allowScreenCaptureAsync: async () => { calls.push('allow-capture'); }, disableAppSwitcherProtectionAsync: async () => { calls.push('allow-switcher'); },
   };
-  const exports: any = {};
-  runInNewContext(code, { exports, Date, Math, Error, Promise, setTimeout, clearTimeout, require: (name: string) => {
+  const exports: any = {}; const timers: { callback: () => void; delay: number; active: boolean }[] = [];
+  runInNewContext(code, { exports, Date, Math, Error, Promise, setTimeout: (callback: () => void, delay: number) => { const timer = { callback, delay, active: true }; timers.push(timer); return timer; }, clearTimeout: (timer: any) => { if (timer) timer.active = false; }, require: (name: string) => {
     if (name === 'react') return react;
     if (name === 'react/jsx-runtime') return { jsx: element, jsxs: element, Fragment: 'Fragment' };
     if (name === 'react-native') return { AppState: appState, Keyboard: { dismiss: () => { calls.push('keyboard-dismiss'); } }, Platform: { OS: 'ios', select: (items: any) => items.ios ?? items.default }, StyleSheet: { create: (styles: any) => styles, absoluteFillObject: {} }, View: 'View', Text: 'Text', Pressable: 'Pressable', Switch: 'Switch', ActivityIndicator: 'ActivityIndicator', Alert: { alert() {} } };
@@ -56,7 +56,8 @@ function harness(flag: unknown = '1', expoGo = false) {
   async function flush() { for (let count = 0; count < 32; count++) { if (dirty || !tree) render(); pendingEffects.splice(0).forEach(run => run()); await Promise.resolve(); } if (dirty) render(); }
   function state(): Lock { if (dirty || !tree) render(); return exports.useAppLock(); }
   function pathToChild(node: any, path: any[] = []): any[] | null { if (node === child) return path; if (Array.isArray(node)) { for (const item of node) { const found = pathToChild(item, path); if (found) return found; } } else if (node && typeof node === 'object') return pathToChild(node.props?.children, [...path, node]); return null; }
-  return { exports, calls, writes, secureCalls, authOptions, switcherOptions, state, render, flush, childPath: () => { state(); return pathToChild(tree); },
+  return { exports, calls, writes, secureCalls, authOptions, switcherOptions, timers, expireTimers: (delay: number) => { timers.filter(timer => timer.active && timer.delay <= delay).forEach(timer => { timer.active = false; timer.callback(); }); }, state, render, flush, tree: () => { state(); return tree; }, childPath: () => { state(); return pathToChild(tree); },
+    unmount: () => { unmounted = true; for (const slot of slots) if (typeof slot?.cleanup === 'function') slot.cleanup(); }, updatesAfterUnmount: () => updatesAfterUnmount,
     change: async (next: string) => { appState.currentState = next; listeners.forEach(listener => listener(next)); await flush(); },
     read: (next: () => Promise<unknown>) => { read = next; }, auth: (next: () => Promise<any>) => { auth = next; }, privacy: (next: () => Promise<void>) => { privacy = next; }, write: (next: (value: string) => Promise<void>) => { write = next; } };
 }
@@ -202,4 +203,42 @@ test('background settings-write completion stays closed until explicit retry rea
 test('failed app-switcher preparation while enabling never persists or exposes an enabled session', async () => {
   const app = await start('0'); app.privacy(async () => { throw new Error('app-switcher protection unavailable'); }); await attempt(app.state().setEnabled(true)); await app.flush();
   assertClosed(app); assert.equal(app.state().enabled, false); assert.deepEqual(app.writes, []); assert.ok(app.state().error);
+});
+
+test('unknown and disabled lock covers describe loading or recovery without claiming Face ID is enabled', async () => {
+  const app = harness('0'); const pending = deferred<unknown>(); app.read(() => pending.promise); await app.flush();
+  assert.equal(app.state().enabled, null); assert.doesNotMatch(JSON.stringify(app.tree()), /Sổ Ví đang được khóa|Mở khóa bằng Face ID|Mở khóa Sổ Ví/);
+  pending.resolve('0'); await app.flush(); await app.change('background'); await app.change('active');
+  app.read(async () => { throw new Error('Storage not ready'); }); await attempt(app.state().retry()); await app.flush();
+  assertClosed(app); assert.doesNotMatch(JSON.stringify(app.tree()), /Sổ Ví đang được khóa|Mở khóa bằng Face ID|Mở khóa Sổ Ví/); assert.equal(app.calls.filter(call => call === 'auth').length, 0);
+});
+
+test('enabling waits for its successful native prompt to return active and continues once without reprompting', async () => {
+  const app = await start('0'); const pending = deferred<any>(); app.auth(() => pending.promise);
+  const operation = app.state().setEnabled(true); await app.flush(); await app.change('inactive'); pending.resolve({ success: true }); await app.flush();
+  assert.equal(app.state().covered, true); assert.deepEqual(app.writes, []);
+  await app.change('active'); await attempt(operation); await app.flush();
+  assert.deepEqual(app.writes, ['1']); assert.equal(app.state().enabled, true); assert.equal(app.state().covered, false); assert.equal(app.calls.filter(call => call === 'auth').length, 1);
+});
+
+test('enabling after a successful inactive native prompt is invalidated by true background', async () => {
+  const app = await start('0'); const pending = deferred<any>(); app.auth(() => pending.promise);
+  const operation = app.state().setEnabled(true); await app.flush(); await app.change('inactive'); pending.resolve({ success: true }); await app.flush();
+  await app.change('background'); await app.change('active'); await attempt(operation); await app.flush();
+  assertClosed(app); assert.deepEqual(app.writes, []); assert.equal(app.state().enabled, false);
+});
+
+test('accepted native authentication that never returns active times out within five seconds without writing', async () => {
+  const app = await start('0'); const pending = deferred<any>(); app.auth(() => pending.promise);
+  const operation = app.state().setEnabled(true); await app.flush(); await app.change('inactive'); pending.resolve({ success: true }); await app.flush();
+  assert.ok(app.timers.some(timer => timer.active && timer.delay > 0 && timer.delay <= 5000), 'foreground wait has a bounded timer');
+  app.expireTimers(5000); await attempt(operation); await app.flush(); assertClosed(app); assert.deepEqual(app.writes, []); assert.equal(app.state().busy, false); assert.equal(app.state().enabled, false);
+  await app.change('active'); assertClosed(app); assert.equal(app.calls.filter(call => call === 'auth').length, 1);
+});
+
+test('unmount during accepted authentication foreground wait cancels timers without writing or admitting children', async () => {
+  const app = await start('0'); const guard = app.state().assertUnlocked; const pending = deferred<any>(); app.auth(() => pending.promise);
+  const operation = app.state().setEnabled(true); await app.flush(); await app.change('inactive'); pending.resolve({ success: true }); await app.flush();
+  assert.ok(app.timers.some(timer => timer.active), 'accepted own-prompt success is waiting for active');
+  app.unmount(); await attempt(operation); await app.flush(); assert.deepEqual(app.writes, []); assert.equal(app.updatesAfterUnmount(), 0); assert.throws(guard); assert.ok(app.timers.every(timer => !timer.active), 'unmount cancels the foreground wait');
 });

@@ -3,13 +3,15 @@
     "name": "Sổ Ví",
     "slug": "so-vi",
     "scheme": "sovi",
-    "version": "0.1.0",
+    "version": "0.1.1",
+    "icon": "./assets/icon-sovi.png",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "local.sovi.moneytracker",
+      "buildNumber": "2",
       "infoPlist": {
         "CFBundleDisplayName": "So Vi"
       }
