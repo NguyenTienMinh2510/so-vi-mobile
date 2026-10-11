@@ -43,9 +43,17 @@ module.exports = config => {
         project.addBuildPhase([], 'PBXSourcesBuildPhase', 'Sources', target.uuid);
         project.addBuildPhase([], 'PBXFrameworksBuildPhase', 'Frameworks', target.uuid);
         project.addBuildPhase([], 'PBXResourcesBuildPhase', 'Resources', target.uuid);
-        const group = project.addPbxGroup([], spec.name, spec.name); project.addToPbxGroup(group.uuid, project.getFirstProject().firstProject.mainGroup);
+        const group = project.addPbxGroup([], spec.name); project.addToPbxGroup(group.uuid, project.getFirstProject().firstProject.mainGroup);
         for (const filename of spec.files) IOSConfig.XcodeUtils.addBuildSourceFileToGroup({ filepath: `${spec.name}/${filename}`, groupName: spec.name, project, targetUuid: target.uuid });
       }
+      const extensionGroups = Object.entries(objects.PBXGroup).filter(([key, group]) => !key.endsWith('_comment') && unquote(group.name) === spec.name);
+      if (extensionGroups.length !== 1) throw new Error(`Missing or ambiguous ${spec.name} source group.`);
+      const [groupID, extensionGroup] = extensionGroups[0];
+      const owners = Object.entries(objects.PBXGroup).filter(([key, group]) => !key.endsWith('_comment') && group.children?.some(child => child.value === groupID));
+      if (unquote(extensionGroup.sourceTree) !== '<group>' || owners.length !== 1 || owners[0][0] !== project.getFirstProject().firstProject.mainGroup || extensionGroup.children.length !== spec.files.length || extensionGroup.children.some((child, index) => unquote(objects.PBXFileReference[child.value]?.path) !== `${spec.name}/${spec.files[index]}`)) throw new Error(`Unexpected ${spec.name} source group layout.`);
+      if (!['', spec.name].includes(unquote(extensionGroup.path))) throw new Error(`Unexpected ${spec.name} source group path.`);
+      // Sources already include the extension directory; legacy groups must not add it again.
+      delete extensionGroup.path;
       for (const configuration of objects.XCConfigurationList[target.pbxNativeTarget.buildConfigurationList].buildConfigurations) {
         const settings = objects.XCBuildConfiguration[configuration.value].buildSettings;
         if (settings.PRODUCT_BUNDLE_IDENTIFIER && unquote(settings.PRODUCT_BUNDLE_IDENTIFIER) !== `${parentIdentifier}.${spec.suffix}`) throw new Error(`${spec.name} bundle identity conflict.`);
