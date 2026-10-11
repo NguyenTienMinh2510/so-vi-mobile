@@ -22,6 +22,15 @@ import Foundation
     let trusted = alias.appendingPathComponent("Caches", isDirectory: true)
     let ocr = cache.appendingPathComponent("SoViOCR", isDirectory: true)
     let picker = cache.appendingPathComponent("ImagePicker", isDirectory: true)
+    assert(!manager.fileExists(atPath: ocr.path), "first OCR capture has no pre-existing child directory")
+    let firstCaptureDirectory = try OCRCachePaths.cacheDirectory(trusted, subdirectory: "SoViOCR")
+    assert(firstCaptureDirectory.standardizedFileURL.path == ocr.standardizedFileURL.path)
+    try manager.createDirectory(at: firstCaptureDirectory, withIntermediateDirectories: true)
+    let firstCapture = firstCaptureDirectory.appendingPathComponent(UUID().uuidString + ".jpg")
+    try write(firstCapture)
+    let firstRead = try OCRCachePaths.ownedFile(firstCapture.absoluteString, cache: trusted, subdirectory: "SoViOCR")
+    let firstBytes = try Data(contentsOf: firstRead); assert(firstBytes == Data("fixture-image".utf8))
+    try manager.removeItem(at: firstRead); assert(!manager.fileExists(atPath: firstCapture.path))
     try manager.createDirectory(at: ocr, withIntermediateDirectories: true)
     try manager.createDirectory(at: picker, withIntermediateDirectories: true)
     let image = ocr.appendingPathComponent("read.image"); try write(image)
@@ -29,6 +38,26 @@ import Foundation
     try check(OCRCachePaths.cacheDirectory(trusted, subdirectory: "SoViOCR") == ocr)
     try check(OCRCachePaths.ownedFile(aliasedImage.absoluteString, cache: trusted, subdirectory: "SoViOCR") == image)
     try check(OCRCachePaths.ownedFile(image.absoluteString, cache: trusted, subdirectory: "SoViOCR") == image)
+    for cacheHint in [URL(fileURLWithPath: cache.path, isDirectory: true), URL(fileURLWithPath: cache.path, isDirectory: false), URL(fileURLWithPath: trusted.path, isDirectory: true), URL(fileURLWithPath: trusted.path, isDirectory: false)] {
+      let child = try OCRCachePaths.cacheDirectory(cacheHint, subdirectory: "SoViOCR")
+      assert(child.standardizedFileURL.path == ocr.standardizedFileURL.path)
+      let acceptedURIs = cacheHint.path == trusted.path ? [image.absoluteString, aliasedImage.absoluteString] : [image.absoluteString]
+      for uri in acceptedURIs {
+        let readable = try OCRCachePaths.ownedFile(uri, cache: cacheHint, subdirectory: "SoViOCR")
+        assert(readable.standardizedFileURL.path == image.standardizedFileURL.path)
+        let bytes = try Data(contentsOf: readable); assert(bytes == Data("fixture-image".utf8))
+      }
+    }
+    let encodedImage = ocr.appendingPathComponent("read space % image.jpg"); try write(encodedImage)
+    let encodedAlias = trusted.appendingPathComponent("SoViOCR/read space % image.jpg")
+    assert(encodedImage.absoluteString.contains("%20") && encodedImage.absoluteString.contains("%25"))
+    for uri in [encodedImage.absoluteString, encodedAlias.absoluteString] {
+      let readable = try OCRCachePaths.ownedFile(uri, cache: URL(fileURLWithPath: trusted.path, isDirectory: false), subdirectory: "SoViOCR")
+      assert(readable.standardizedFileURL.path == encodedImage.standardizedFileURL.path)
+      let bytes = try Data(contentsOf: readable); assert(bytes == Data("fixture-image".utf8))
+    }
+    let clearEncoded = try OCRCachePaths.ownedFile(encodedAlias.absoluteString, cache: trusted, subdirectory: "SoViOCR")
+    try manager.removeItem(at: clearEncoded); assert(!manager.fileExists(atPath: encodedImage.path)); assert(manager.fileExists(atPath: image.path))
     let external = outside.appendingPathComponent("private.image"); try write(external)
     let sibling = cache.appendingPathComponent("SoViOCR-other", isDirectory: true); try manager.createDirectory(at: sibling, withIntermediateDirectories: true)
     let siblingImage = sibling.appendingPathComponent("read.image"); try write(siblingImage)

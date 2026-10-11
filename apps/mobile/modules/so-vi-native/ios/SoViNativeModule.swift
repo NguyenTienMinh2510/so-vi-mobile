@@ -28,14 +28,14 @@ public final class SoViNativeModule: Module {
       catch { return ["available": false, "error": error.localizedDescription] }
     }
     AsyncFunction("clearOcrCacheAsync") { () in
-      let cache = try FileManager.default.url(for: .cachesDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+      let cache = try self.cacheDirectory()
       let root = try OCRCachePaths.cacheDirectory(cache, subdirectory: "SoViOCR")
       if FileManager.default.fileExists(atPath: root.path) {
         for file in try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil) where file.pathExtension == "image" { try FileManager.default.removeItem(at: OCRCachePaths.ownedFile(file.absoluteString, cache: cache, subdirectory: "SoViOCR")) }
       }
     }
     AsyncFunction("removeImageCopyAsync") { (uri: String) in
-      let cache = try FileManager.default.url(for: .cachesDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+      let cache = try self.cacheDirectory()
       guard let file = (try? OCRCachePaths.ownedFile(uri, cache: cache, subdirectory: nil, requireUUID: true)) ?? (try? OCRCachePaths.ownedFile(uri, cache: cache, subdirectory: "ImagePicker", requireUUID: true)) else { return }
       if FileManager.default.fileExists(atPath: file.path) { try FileManager.default.removeItem(at: file) }
     }
@@ -43,8 +43,12 @@ public final class SoViNativeModule: Module {
       try self.recognize(uri)
     }.runOnQueue(DispatchQueue(label: "local.sovi.vision", qos: .userInitiated))
   }
+  private func cacheDirectory() throws -> URL {
+    if let cache = appContext?.config.cacheDirectory { return cache }
+    return try FileManager.default.url(for: .cachesDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+  }
   private func recognize(_ uri: String) throws -> [String: Any] {
-    let cache = try FileManager.default.url(for: .cachesDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+    let cache = try cacheDirectory()
     let url = try OCRCachePaths.ownedFile(uri, cache: cache, subdirectory: "SoViOCR")
     return try VisionOCR.recognize(url).dictionary
   }
