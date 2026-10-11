@@ -4,11 +4,13 @@ import { openRepository, type LedgerRepository, type LoadedLedger } from './data
 import { type Backup, type Command } from './domain';
 import { drainNativeImports } from './native-import';
 import { nativeImportBridge, observeNativeImports } from './native';
+import { useAppLock } from './app-lock';
 
 export const newId = () => `id-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 12)}`;
 type Store = { loaded: LoadedLedger | null; error: string | null; nativeImportError: string; notice: string; retry: () => void; retryNativeImports: () => Promise<void>; refresh: () => Promise<LoadedLedger>; execute: (command: Command, revision?: number) => Promise<LoadedLedger>; restore: (backup: Backup, revision: number) => Promise<LoadedLedger> };
 const Context = createContext<Store | null>(null);
 export function StoreProvider({ children }: { children: ReactNode }) {
+  const { assertUnlocked } = useAppLock();
   const [loaded, setLoaded] = useState<LoadedLedger | null>(null); const [error, setError] = useState<string | null>(null); const [notice, setNotice] = useState(''); const [attempt, setAttempt] = useState(0);
   const repository = useRef<LedgerRepository | null>(null);
   const [nativeImportError, setNativeImportError] = useState('');
@@ -40,8 +42,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => { if (!notice) return; const timer = setTimeout(() => setNotice(''), 4000); return () => clearTimeout(timer); }, [notice]);
   const refresh = async () => { if (!repository.current) throw new Error('Database chưa sẵn sàng.'); const result = await repository.current.load(); update(result); return result; };
   useEffect(() => { const sub = AppState.addEventListener('change', state => { if (state === 'active' && repository.current) { void refresh().catch(e => setError(errorMessage(e))); void retryNativeImports(); } }); return () => sub.remove(); }, []);
-  const execute = async (command: Command, revision = loaded?.revision) => { if (!repository.current || revision === undefined) throw new Error('Database chưa sẵn sàng.'); const result = await repository.current.mutate(command, revision); update(result); setNotice('Đã lưu vào Sổ Ví'); return result; };
-  const restore = async (backup: Backup, revision: number) => { if (!repository.current) throw new Error('Database chưa sẵn sàng.'); const result = await repository.current.restore(backup, revision); update(result); setNotice('Đã khôi phục backup'); return result; };
+  const execute = async (command: Command, revision = loaded?.revision) => { assertUnlocked(); if (!repository.current || revision === undefined) throw new Error('Database chưa sẵn sàng.'); const result = await repository.current.mutate(command, revision); update(result); setNotice('Đã lưu vào Sổ Ví'); return result; };
+  const restore = async (backup: Backup, revision: number) => { assertUnlocked(); if (!repository.current) throw new Error('Database chưa sẵn sàng.'); const result = await repository.current.restore(backup, revision); update(result); setNotice('Đã khôi phục backup'); return result; };
   return <Context.Provider value={{ loaded, error, nativeImportError, notice, refresh, execute, restore, retryNativeImports, retry: () => { setLoaded(null); setAttempt(x => x + 1); } }}>{children}</Context.Provider>;
 }
 export function useStore(): Store { const value = useContext(Context); if (!value) throw new Error('Store chưa được khởi tạo.'); return value; }

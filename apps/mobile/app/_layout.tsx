@@ -4,6 +4,7 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StoreProvider, useStore } from '../src/store';
+import { AppLockProvider } from '../src/app-lock';
 import { Button, Card, Page, colors, styles } from '../src/ui';
 
 function Root() {
@@ -12,4 +13,4 @@ function Root() {
   if (!store.loaded) return <Page title="Sổ Ví"><View style={styles.content}><ActivityIndicator color={colors.accent} accessibilityLabel="Đang mở dữ liệu" /><Text style={styles.secondary}>Đang mở dữ liệu trên điện thoại…</Text></View></Page>;
   return <><Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background }, animation: 'none' }} />{store.notice ? <Text accessibilityLiveRegion="polite" style={styles.notice}>{store.notice}</Text> : null}</>;
 }
-export default function Layout() { return <SafeAreaProvider><StoreProvider><StatusBar style="light" /><Root /></StoreProvider></SafeAreaProvider>; }
+export default function Layout() { return <SafeAreaProvider><AppLockProvider><StoreProvider><StatusBar style="light" /><Root /></StoreProvider></AppLockProvider></SafeAreaProvider>; }

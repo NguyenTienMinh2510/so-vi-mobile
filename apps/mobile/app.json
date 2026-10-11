@@ -10,15 +10,31 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "local.sovi.moneytracker",
-      "infoPlist": { "CFBundleDisplayName": "So Vi" }
+      "infoPlist": {
+        "CFBundleDisplayName": "So Vi"
+      }
     },
     "plugins": [
       "expo-router",
       "expo-sqlite",
       "expo-sharing",
       "expo-status-bar",
-      ["expo-image-picker", { "photosPermission": "Sổ Ví chỉ đọc ảnh bạn chọn để nhận diện văn bản trên điện thoại.", "cameraPermission": "Sổ Ví dùng camera khi bạn chọn chụp ảnh để nhận diện văn bản trên điện thoại.", "microphonePermission": false }],
-      "./plugins/with-so-vi-native"
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Sổ Ví dùng Face ID khi bạn bật khóa ứng dụng; bạn cũng có thể dùng mật mã iPhone."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Sổ Ví chỉ đọc ảnh bạn chọn để nhận diện văn bản trên điện thoại.",
+          "cameraPermission": "Sổ Ví dùng camera khi bạn chọn chụp ảnh để nhận diện văn bản trên điện thoại.",
+          "microphonePermission": false
+        }
+      ],
+      "./plugins/with-so-vi-native",
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": false

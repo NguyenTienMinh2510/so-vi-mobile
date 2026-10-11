@@ -21,6 +21,7 @@ test('draft reload accepts reordered unchanged rows but rejects changed values a
     if (name === 'expo-router') return { useNavigation: () => ({}) };
     if (name === 'expo-router/react-navigation') return { usePreventRemove: () => {} };
     if (name === './domain') return domain;
+    if (name === './app-lock') return { useAppLock: () => ({ assertUnlocked: () => {} }) };
     if (name === './store') return { newId: () => 'draft-id', errorMessage: (e: Error) => e.message, useLedger: () => ({ revision: 1, refresh: async () => ({ revision: 2, ledger: { transactions: current ? [current] : [] } }) }) };
     return {};
   } });
