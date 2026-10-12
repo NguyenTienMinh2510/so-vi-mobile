@@ -40,7 +40,7 @@ function harness() {
   const dependencies = (name: string): any => {
     if (name === 'react') return react;
     if (name === 'react-native') return { AppState: appState, Text: 'Text', View: 'View', Pressable: 'Pressable', FlatList: 'FlatList', StyleSheet: { create: (styles: any) => styles }, Platform: { OS: 'ios' }, Alert: { alert: (...args: any[]) => alerts.push(args) } };
-    if (name === 'expo-router') return { router, useNavigation: () => ({ dispatch: (value: any) => routes.push({ method: 'dispatch', value }) }), useLocalSearchParams: () => ({}), useIsFocused: () => focused };
+    if (name === 'expo-router') return { router, useNavigation: () => ({ dispatch: (value: any) => routes.push({ method: 'dispatch', value }) }), useLocalSearchParams: () => ({ input: 'photo' }), useIsFocused: () => focused };
     if (name === 'expo-router/react-navigation') return { usePreventRemove: (enabled: boolean, callback: any) => guards.push({ enabled, callback }), useIsFocused: () => focused };
     if (name === './domain') return domain;
     if (name === './import') return parser;
@@ -186,4 +186,18 @@ test('an OCR source committed before parse-write failure can retry without recei
   retry.props.onPress(); await app.flush(); assert.equal(app.ledger().importedEvents.length, 1); assert.equal(app.ledger().importedEvents[0].id, id);
   assert.equal(app.commands.filter(command => command.type === 'import.receive').length, 1); assert.equal(app.ledger().importedEvents[0].state, 'needs_review');
   assert.equal(app.routes.length, 1); assert.equal(app.ledger().transactions.length, 0);
+});
+
+test('unknown OCR can continue as editable text with its full content retained and only receive a waiting source', async () => {
+  const app = harness(); app.button('Chọn ảnh để nhận diện').props.onPress(); await app.flush();
+  const prefix = 'Nội dung chưa nhận diện\n'; const text = prefix + 'x'.repeat(4000 - prefix.length);
+  app.resolve(text, []); await app.flush(); assert.equal(app.commands.length, 0); assert.equal(app.routes.length, 0);
+  const extracted = nodes(app.render()).find(node => node.type === 'Field' && node.props.label === 'Văn bản từ ảnh — kiểm tra và sửa'); assert.ok(extracted); assert.equal(extracted.props.value, text);
+  app.button('Dùng văn bản đã kiểm tra').props.onPress(); await app.flush();
+  const fallback = nodes(app.render()).find(node => node.type === 'Field' && node.props.multiline && node.props.value === text); assert.ok(fallback, 'full unknown OCR text must remain available in the manual continuation');
+  assert.ok(nodes(app.render()).some(node => node.type === 'Text' && node.props.children.join('') === '4000/4000 ký tự'));
+  app.button('Lưu để duyệt').props.onPress(); await app.flush();
+  assert.deepEqual(app.commands.map(command => command.type), ['import.receive']); assert.equal(app.ledger().importedEvents.length, 1);
+  assert.equal(app.ledger().importedEvents[0].text, text); assert.equal(app.ledger().importedEvents[0].state, 'received');
+  assert.equal(app.ledger().transactions.length, 0); assert.equal(domain.balances(app.ledger()).total, '1000000');
 });

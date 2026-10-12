@@ -27,7 +27,7 @@ function screenHarness(nativeOptions?: { result: any }) {
   runInNewContext(code, { exports, Date, require: (name: string) => {
     if (name === 'react') return react;
     if (name === 'react-native') return { Text: 'Text', Pressable: 'Pressable', FlatList: 'FlatList', AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) } };
-    if (name === 'expo-router') return { router: { push() {} }, useLocalSearchParams: () => ({ input: undefined }), useIsFocused: () => true };
+    if (name === 'expo-router') return { router: { push() {} }, useLocalSearchParams: () => ({ input: nativeOptions ? 'photo' : undefined }), useIsFocused: () => true };
     if (name === './domain') return domain;
     if (name === './import') return parser;
     if (name === './native') return { isNativeImportAvailable: () => !!nativeOptions, recognizeImportImage: async () => { ocrCalls++; return nativeOptions?.result ?? null; } };
@@ -59,7 +59,7 @@ test('actual OCR screen cancellation preserves the typed draft and creates no In
 test('paste saves only an Inbox event and financial posting requires an explicit review click', async () => {
   const app = screenHarness(); const fields = app.nodes(app.exports.ImportTextScreen());
   fields.find(n => n.type === 'Field' && n.props.multiline).props.onChangeText('Thanh toán thành công số tiền 58.000 VND');
-  fields.find(n => n.type === 'Button' && n.props.title === 'Lưu vào Inbox').props.onPress();
+  fields.find(n => n.type === 'Button' && n.props.title === 'Lưu để duyệt').props.onPress();
   await app.finish();
   assert.equal(Object.keys(app.drafts[0].errors).length, 0);
   assert.equal(app.commands.length, 1); assert.equal(app.commands[0].type, 'import.receive');
@@ -77,7 +77,7 @@ test('informational and pending Inbox review never offers financial confirmation
   for (const text of ['Đơn hàng 58.000 VND đang chờ thanh toán', 'Số dư tài khoản 942.000 VND', 'Ưu đãi cuối tuần']) {
     const app = screenHarness(); const fields = app.nodes(app.exports.ImportTextScreen());
     fields.find(n => n.type === 'Field' && n.props.multiline).props.onChangeText(text);
-    fields.find(n => n.type === 'Button' && n.props.title === 'Lưu vào Inbox').props.onPress(); await app.finish(); app.process();
+    fields.find(n => n.type === 'Button' && n.props.title === 'Lưu để duyệt').props.onPress(); await app.finish(); app.process();
     const review = app.nodes(app.review());
     assert.ok(!review.some(n => n.type === 'Button' && n.props.title === 'Xác nhận ghi sổ'));
     assert.ok(review.some(n => n.type === 'Button' && n.props.title === 'Bỏ qua, giữ lịch sử'));
@@ -89,7 +89,7 @@ test('overlong pasted content is retained and rejected without silently creating
   const input = fields.find(n => n.type === 'Field' && n.props.multiline);
   assert.equal(input.props.maxLength, undefined, 'native input must not silently truncate original content');
   const original = 'a'.repeat(4001); input.props.onChangeText(original);
-  fields.find(n => n.type === 'Button' && n.props.title === 'Lưu vào Inbox').props.onPress(); await app.finish();
+  fields.find(n => n.type === 'Button' && n.props.title === 'Lưu để duyệt').props.onPress(); await app.finish();
   assert.equal(app.ledger().importedEvents.length, 0);
   assert.equal(app.drafts[0].values.text, original); assert.ok(app.drafts[0].errors.form);
 });

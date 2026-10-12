@@ -35,13 +35,14 @@ function harness(file: 'screens' | 'import-screen', input?: unknown, native = tr
   return { render, flush, routes, ocr, draft, focus: (value: boolean) => { focused = value; dirty = true; }, lock: (value: boolean) => { locked = value; dirty = true; }, change: async (value: string) => { appState.currentState = value; listeners.forEach(callback => callback(value)); dirty = true; await flush(); } };
 }
 
-test('actual Transactions screen exposes text, camera, photo and Inbox shortcuts before search and filters', async () => {
+test('actual Transactions screen exposes text, camera and photo shortcuts before search and filters without a separate Inbox action', async () => {
   const app = harness('screens'); const tree = app.render(); const list = nodes(tree).find(node => node.type === 'SectionList'); assert.ok(list);
   const header = nodes(list.props.ListHeaderComponent); const filter = header.findIndex(node => node.type === 'Button' && /Bộ lọc/.test(node.props.title)); const search = header.findIndex(node => node.type === 'Field'); assert.ok(filter >= 0 && search >= 0);
-  const buttons = header.filter(node => node.type === 'Button' && typeof node.props.onPress === 'function'); const destinations = new Map<any, any>();
+  assert.ok(!header.some(node => node.type === 'Button' && /Inbox/i.test(node.props.title)), 'pending review belongs on the Transactions screen');
+  const buttons = header.filter(node => node.type === 'Button' && ['Dán văn bản', 'Chụp ảnh', 'Chọn ảnh'].includes(node.props.title) && typeof node.props.onPress === 'function'); const destinations = new Map<any, any>();
   for (const button of buttons) { const before = app.routes.length; button.props.onPress(); if (app.routes.length > before) destinations.set(button, app.routes.at(-1)); }
   const normalized = (route: any) => typeof route === 'string' ? { pathname: route, input: undefined } : { pathname: route.pathname, input: route.params?.input };
-  const expected = [{ pathname: '/import-text', input: undefined }, { pathname: '/import-text', input: 'camera' }, { pathname: '/import-text', input: 'photo' }, { pathname: '/inbox', input: undefined }];
+  const expected = [{ pathname: '/import-text', input: undefined }, { pathname: '/import-text', input: 'camera' }, { pathname: '/import-text', input: 'photo' }];
   for (const target of expected) {
     const button = buttons.find(node => destinations.has(node) && JSON.stringify(normalized(destinations.get(node))) === JSON.stringify(target)); assert.ok(button, `missing quick action ${JSON.stringify(target)}`);
     assert.ok(header.indexOf(button) < search && header.indexOf(button) < filter, 'import actions are prominent before search and filters'); assert.ok(button.props.title.trim().length > 0);
@@ -66,6 +67,21 @@ test('automatic image entry waits for focus, foreground and unlock and starts on
 test('dirty and busy draft entry cannot be bypassed by automatic or captured image launch callbacks', async () => {
   const dirty = harness('import-screen', 'photo'); dirty.draft.set('text', 'Bản nháp đang viết'); await dirty.flush(); assert.deepEqual(dirty.ocr, []); assert.equal(dirty.draft.values.text, 'Bản nháp đang viết');
   const busy = harness('import-screen', 'camera'); busy.draft.busy = true; await busy.flush(); assert.deepEqual(busy.ocr, []);
-  const manual = harness('import-screen'); const button = nodes(manual.render()).find(node => node.type === 'Button' && node.props.title === 'Chọn ảnh để nhận diện'); assert.ok(button);
+  const manual = harness('import-screen', 'photo'); const button = nodes(manual.render()).find(node => node.type === 'Button' && node.props.title === 'Chọn ảnh để nhận diện'); assert.ok(button);
   manual.lock(true); try { await button.props.onPress(); } catch { } await manual.flush(); assert.deepEqual(manual.ocr, [], 'captured action consults the live app lock');
+});
+
+test('paste and image entry each show only the controls needed for their selected source', () => {
+  const paste = nodes(harness('import-screen').render());
+  assert.equal(paste.filter(node => node.type === 'Field' && node.props.multiline).length, 1);
+  assert.ok(!paste.some(node => node.type === 'Button' && /ảnh.*nhận diện/.test(node.props.title)));
+  assert.ok(!paste.some(node => node.type === 'Field' && /Ngân hàng|nhà cung cấp|ID nguồn/.test(node.props.label)));
+  assert.ok(!paste.some(node => node.type === 'Choice' && node.props.label === 'Nguồn'));
+  for (const input of ['camera', 'photo']) {
+    const image = nodes(harness('import-screen', input).render());
+    assert.equal(image.filter(node => node.type === 'Field' && node.props.multiline).length, 0, input);
+    assert.ok(image.some(node => node.type === 'Button' && /ảnh.*nhận diện/.test(node.props.title)), input);
+    assert.ok(!image.some(node => node.type === 'Field' && /Ngân hàng|nhà cung cấp|ID nguồn/.test(node.props.label)), input);
+    assert.ok(!image.some(node => node.type === 'Choice' && node.props.label === 'Nguồn'), input);
+  }
 });
