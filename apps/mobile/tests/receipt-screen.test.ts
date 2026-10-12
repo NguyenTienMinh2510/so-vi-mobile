@@ -87,7 +87,15 @@ test('actual known receipt OCR goes directly to review once after picker inactiv
   assert.equal(app.routes.length, 1); assert.equal(app.routes[0].value.pathname, '/import-review');
   assert.equal(app.routes[0].value.params.id, app.ledger().importedEvents[0].id);
   assert.ok(app.ledger().importedEvents[0].warnings.some(warning => warning.includes('Kiểm tra tiếng Việt')));
-  await app.review(); assert.ok(nodes(app.render()).some(node => node.type === 'Button' && node.props.title === 'Xác nhận ghi sổ'));
+  await app.review();
+  const firstStep = nodes(app.render());
+  assert.ok(firstStep.some(node => node.type === 'Field' && node.props.label === 'Văn bản gốc — kiểm tra và sửa'));
+  assert.ok(firstStep.some(node => node.type === 'Field' && node.props.label === 'Số tiền VND'));
+  assert.ok(!firstStep.some(node => node.type === 'Field' && node.props.label === 'Ghi chú'));
+  assert.ok(!firstStep.some(node => node.type === 'Button' && node.props.title === 'Xác nhận ghi sổ'));
+  app.button('Tiếp tục: thông tin giao dịch').props.onPress(); await app.flush();
+  assert.ok(nodes(app.render()).some(node => node.type === 'Button' && node.props.title === 'Xác nhận ghi sổ'));
+  assert.ok(!nodes(app.render()).some(node => node.type === 'Field' && node.props.label === 'Số tiền VND'));
   assert.equal(domain.balances(app.ledger()).total, '1000000');
 });
 
@@ -122,10 +130,52 @@ test('actual review reparses edited original, offers candidates and posts only o
   const choice = candidates.props.items.find((item: any) => item.name.includes('162.000') || item.name.includes('162000')); assert.ok(choice);
   candidates.props.onSelect(choice.id); await app.flush();
   const amount = nodes(app.render()).find(node => node.type === 'Field' && node.props.label === 'Số tiền VND'); assert.ok(amount); assert.equal(domain.parseMoneyInput(amount.props.value), '162000');
+  assert.ok(!nodes(app.render()).some(node => node.type === 'Button' && node.props.title === 'Xác nhận ghi sổ'));
+  app.button('Tiếp tục: thông tin giao dịch').props.onPress(); await app.flush();
   const confirm = app.button('Xác nhận ghi sổ'); confirm.props.onPress(); confirm.props.onPress(); await app.flush();
   assert.equal(app.ledger().transactions.length, 1); assert.equal(domain.balances(app.ledger()).total, '838000');
   assert.equal(app.commands.filter(command => command.type === 'import.confirm').length, 1);
   assert.ok(app.ledger().importedEvents[0].warnings.some(warning => warning.includes('Kiểm tra tiếng Việt')));
+});
+
+test('receipt review steps retain the same draft and reject stale next callbacks until valid amount and fresh analysis', async () => {
+  const app = harness(); app.button('Chọn ảnh để nhận diện').props.onPress(); await app.flush();
+  const originalText = 'HÓA ĐƠN\nTổng cộng: 152.000\nTổng thanh toán: 162.000';
+  app.resolve(originalText); await app.flush(); await app.review();
+  const candidates = nodes(app.render()).find(node => node.type === 'Choice' && node.props.label === 'Số tiền trên hóa đơn'); assert.ok(candidates);
+  candidates.props.onSelect('162000'); await app.flush();
+  const amount = nodes(app.render()).find(node => node.type === 'Field' && node.props.label === 'Số tiền VND'); assert.ok(amount); assert.equal(domain.parseMoneyInput(amount.props.value), '162000');
+  const noConfirmation = () => assert.ok(!nodes(app.render()).some(node => node.type === 'Button' && node.props.title === 'Xác nhận ghi sổ'));
+  const transition = async (title: string) => {
+    const commandCount = app.commands.length; const routeCount = app.routes.length;
+    const button = app.button(title); assert.equal(button.props.disabled, false); button.props.onPress(); await app.flush();
+    assert.equal(app.commands.length, commandCount, 'step changes cannot commit commands'); assert.equal(app.routes.length, routeCount, 'step changes stay in the same mounted review');
+    assert.equal(app.ledger().transactions.length, 0); assert.equal(domain.balances(app.ledger()).total, '1000000');
+  };
+  const capturedValidNext = app.button('Tiếp tục: thông tin giao dịch').props.onPress;
+  amount.props.onChangeText('0'); await app.flush(); assert.equal(app.button('Tiếp tục: thông tin giao dịch').props.disabled, true);
+  try { capturedValidNext(); } catch { } await app.flush(); noConfirmation();
+  const currentAmount = nodes(app.render()).find(node => node.type === 'Field' && node.props.label === 'Số tiền VND'); assert.ok(currentAmount);
+  currentAmount.props.onChangeText('162000'); await app.flush();
+  await transition('Tiếp tục: thông tin giao dịch');
+  assert.ok(!nodes(app.render()).some(node => node.type === 'Field' && ['Số tiền VND', 'Văn bản gốc — kiểm tra và sửa'].includes(node.props.label)));
+  const note = nodes(app.render()).find(node => node.type === 'Field' && node.props.label === 'Ghi chú'); assert.ok(note); note.props.onChangeText('Giữ ghi chú khi quay lại'); await app.flush();
+  await transition('Quay lại: kiểm tra hóa đơn'); noConfirmation();
+  const backAmount = nodes(app.render()).find(node => node.type === 'Field' && node.props.label === 'Số tiền VND'); assert.ok(backAmount); assert.equal(domain.parseMoneyInput(backAmount.props.value), '162000');
+  const original = nodes(app.render()).find(node => node.type === 'Field' && node.props.label === 'Văn bản gốc — kiểm tra và sửa'); assert.ok(original); assert.equal(original.props.value, originalText);
+  await transition('Tiếp tục: thông tin giao dịch');
+  assert.equal(nodes(app.render()).find(node => node.type === 'Field' && node.props.label === 'Ghi chú')?.props.value, 'Giữ ghi chú khi quay lại');
+  await transition('Quay lại: kiểm tra hóa đơn');
+  const capturedFreshNext = app.button('Tiếp tục: thông tin giao dịch').props.onPress;
+  nodes(app.render()).find(node => node.type === 'Field' && node.props.label === 'Văn bản gốc — kiểm tra và sửa')!.props.onChangeText('HÓA ĐƠN\nTổng cộng: 172.000'); await app.flush();
+  assert.equal(app.button('Tiếp tục: thông tin giao dịch').props.disabled, true);
+  try { capturedFreshNext(); } catch { } await app.flush(); noConfirmation();
+  app.button('Phân tích lại văn bản').props.onPress(); await app.flush(); noConfirmation();
+  const freshAmount = nodes(app.render()).find(node => node.type === 'Field' && node.props.label === 'Số tiền VND'); assert.ok(freshAmount); assert.equal(domain.parseMoneyInput(freshAmount.props.value), '172000');
+  assert.equal(app.ledger().importedEvents[0].text, 'HÓA ĐƠN\nTổng cộng: 172.000');
+  await transition('Tiếp tục: thông tin giao dịch');
+  assert.equal(nodes(app.render()).find(node => node.type === 'Field' && node.props.label === 'Ghi chú')?.props.value, 'Giữ ghi chú khi quay lại');
+  assert.equal(app.ledger().importedEvents.length, 1); assert.equal(app.ledger().transactions.length, 0);
 });
 
 test('an OCR source committed before parse-write failure can retry without receiving another source', async () => {

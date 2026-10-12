@@ -130,6 +130,17 @@ function strongImportDuplicate(s: Ledger, event: ImportedEvent) {
   const family = importFamily(event);
   return family && s.importedEvents.find(other => other.id !== event.id && !other.ignored && other.state !== 'duplicate' && other.state !== 'failed' && importFamily(other) === family && other.provider.toLocaleLowerCase('vi') === event.provider.toLocaleLowerCase('vi') && ((event.sourceId !== null && other.source === event.source && other.sourceId === event.sourceId) || (event.reference !== null && other.reference === event.reference)));
 }
+function recoverImportDuplicates(s: Ledger, owner: ImportedEvent, message: string) {
+  const duplicates = s.importedEvents.filter(other => other.duplicateOf === owner.id && !strongImportDuplicate({ ...s, importedEvents: [owner] }, other)).sort((a, b) => a.receivedAt.localeCompare(b.receivedAt) || a.id.localeCompare(b.id));
+  for (const other of duplicates) { other.duplicateOf = null; other.state = 'needs_review'; other.version++; }
+  const pending = new Set(duplicates.map(other => other.id));
+  for (const other of duplicates) {
+    pending.delete(other.id);
+    const replacement = strongImportDuplicate({ ...s, importedEvents: s.importedEvents.filter(candidate => !pending.has(candidate.id)) }, other);
+    if (replacement) { other.state = 'duplicate'; other.duplicateOf = replacement.id; }
+    else other.warnings = [...new Set([message, ...other.warnings])].slice(0, 20);
+  }
+}
 function validateImportedEvents(s: Ledger, now: string) {
   identity(s.importedEvents);
   const targets = new Set<string>();
@@ -271,17 +282,10 @@ export function applyCommand(state: Ledger, command: Command, context: { now: st
         else if (importFamily(event) && s.importedEvents.some(other => other.id !== event.id && !other.ignored && importFamily(other) === importFamily(event) && (other.text === event.text || (event.amount !== null && event.amount === other.amount)))) event.warnings.push('Có nội dung hoặc số tiền giống một mục khác. Có thể là hai giao dịch thật; kiểm tra trước khi ghi sổ.');
         if (command.type === 'import.reparse') event.warnings = [...new Set([...event.warnings, ...command.payload.warnings])].slice(0, 20);
       }
+      if (command.type === 'import.reparse') recoverImportDuplicates(s, event, 'Nguồn gốc đã thay đổi. Kiểm tra nội dung này trước khi ghi sổ.');
     } else if (command.type === 'import.ignore') {
       event.ignored = true;
-      const duplicates = s.importedEvents.filter(other => other.duplicateOf === event.id).sort((a, b) => a.receivedAt.localeCompare(b.receivedAt) || a.id.localeCompare(b.id));
-      for (const other of duplicates) { other.duplicateOf = null; other.state = 'needs_review'; other.version++; }
-      const pending = new Set(duplicates.map(other => other.id));
-      for (const other of duplicates) {
-        pending.delete(other.id);
-        const replacement = strongImportDuplicate({ ...s, importedEvents: s.importedEvents.filter(candidate => !pending.has(candidate.id)) }, other);
-        if (replacement) { other.state = 'duplicate'; other.duplicateOf = replacement.id; }
-        else other.warnings = [...new Set([...other.warnings, 'Nguồn gốc đã được bỏ qua. Kiểm tra nội dung này trước khi ghi sổ.'])];
-      }
+      recoverImportDuplicates(s, event, 'Nguồn gốc đã được bỏ qua. Kiểm tra nội dung này trước khi ghi sổ.');
     }
     else if (command.type === 'import.confirm') {
       if (event.state !== 'needs_review' || !importFamily(event)) fail('INVALID_INPUT', 'Chỉ ghi sổ nội dung thanh toán, hoàn tiền hoặc chuyển ví đã duyệt.');

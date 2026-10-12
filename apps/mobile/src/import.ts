@@ -6,8 +6,9 @@ const fold = (text: string) => text.normalize('NFD').replace(/[\u0300-\u036f]/g,
 export function analyzeReceiptText(text: string): { suggestion: ImportSuggestion; candidates: { amount: string; evidence: string }[]; evidence: string | null } | null {
   if (typeof text !== 'string' || !text.trim() || text.length > MAX_IMPORT_TEXT) throw new Error('Dán nội dung từ 1 đến 4.000 ký tự.');
   const normalized = fold(text);
-  if (/chua (?:thanh toan|thanh cong)|cho (?:thanh toan|xac nhan)|dang (?:cho|xu ly)|pending|that bai|khong thanh cong|hoan tien|refund|chuyen noi bo|giua (?:cac |hai )?(?:vi|tai khoan) cua toi|so du|\bbalance\b|ma\s+(?:giao dich|gd|tham chieu)|\breference\b|\btransaction\b|thanh toan thanh cong|ghi [nc]o|credited|debited/.test(normalized)) return null;
+  if (/chua (?:thanh toan|thanh cong)|cho (?:thanh toan|xac nhan)|dang (?:cho|xu ly)|pending|that bai|khong thanh cong|hoan tien|refund|chuyen|giua (?:cac |hai )?(?:vi|tai khoan) cua toi|so du|\bsd\b|\bbalance\b|giao dich|\bgd\b|\bref\b|\breference\b|\btransaction\b|thanh toan thanh cong|ghi [nc]o|nhan tien|credited|debited|\bpayment\b|don hang|order/.test(normalized)) return null;
   const totalLabel = /^(?:tong thanh toan|tong cong|tong tien(?: thanh toan)?|phai tra|grand total|amount due|total due)\b\s*(?:\(?(?:vnd|dong|d|₫)\)?)?\s*[:=]?\s*/;
+  if (!/hoa don|\breceipt\b|\binvoice\b/.test(normalized) && normalized.split(/\r?\n/).some(line => !totalLabel.test(line.trim()) && /^\s*[+-]\s*\d[\d.,]*(?: \d{3})*\s*(?:vnd|dong|d\b|₫)\s*$/.test(line))) return null;
   const lines = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
   const candidates: { amount: string; evidence: string }[] = [];
   const warnings = ['Hóa đơn chỉ là đề xuất, chưa chứng minh đã thanh toán. Xác nhận giao dịch thực tế trước khi ghi sổ.'];
@@ -73,7 +74,7 @@ export function parseImportText(text: string): ImportSuggestion {
     amounts.push(value.toString());
     if (/^[+-]/.test(match[1].trim())) signs.push(match[1].trim()[0]);
   }
-  const classification: ImportClassification = pending ? 'pending_order' : refund ? 'refund' : internal ? 'internal_transfer' : balance && !movement ? 'balance_update' : movement || signs.length ? 'payment_success' : /don hang|order/.test(normalized) ? 'pending_order' : balance ? 'balance_update' : 'ignored';
+  const classification: ImportClassification = pending ? 'pending_order' : refund ? 'refund' : internal ? 'internal_transfer' : movement || signs.length ? 'payment_success' : /don hang|order/.test(normalized) ? 'pending_order' : balance ? 'balance_update' : 'ignored';
   const distinct = [...new Set(amounts)];
   let amount = distinct.length === 1 && !warnings.length ? distinct[0] : null;
   if (distinct.length > 1) warnings.push('Có nhiều số tiền khác nhau; hãy xác định số tiền giao dịch.');
