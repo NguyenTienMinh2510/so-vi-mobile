@@ -28,7 +28,7 @@ export type Command = Mutation<'wallet.create', Create<Wallet>> | Mutation<'wall
   | Mutation<'transfer.create', Create<Transfer>> | Mutation<'transfer.update', Update<Transfer>> | Mutation<'transfer.delete', Revision>
   | Mutation<'adjustment.create', Create<Adjustment>> | Mutation<'budget.create', Create<Budget>> | Mutation<'budget.update', Update<Budget>> | Mutation<'budget.delete', Revision>
   | Mutation<'activity.read', { id: string }> | Mutation<'settings.update', Ledger['settings']> | Mutation<'data.clear', { confirmation: 'XÓA' }>
-  | Mutation<'import.receive', Pick<ImportedEvent, 'id' | 'source' | 'provider' | 'sourceId' | 'text' | 'receivedAt'>> | Mutation<'import.process', Revision> | Mutation<'import.ignore', Revision> | Mutation<'import.confirm', Revision & { entry: ImportEntry }>;
+  | Mutation<'import.receive', Pick<ImportedEvent, 'id' | 'source' | 'provider' | 'sourceId' | 'text' | 'receivedAt'>> | Mutation<'import.process', Revision> | Mutation<'import.reparse', Revision & { text: string; warnings: string[] }> | Mutation<'import.ignore', Revision> | Mutation<'import.confirm', Revision & { entry: ImportEntry }>;
 export class DomainError extends Error {
   code: string; field?: string;
   constructor(code: string, message: string, field?: string) { super(message); this.name = 'DomainError'; this.code = code; this.field = field; }
@@ -237,7 +237,7 @@ export function applyCommand(state: Ledger, command: Command, context: { now: st
     'transfer.create': ['id', 'fromWalletId', 'toWalletId', 'amount', 'occurredAt', 'note'], 'transfer.update': ['id', 'fromWalletId', 'toWalletId', 'amount', 'occurredAt', 'note', 'expectedVersion'], 'transfer.delete': ['id', 'expectedVersion'],
     'adjustment.create': ['id', 'walletId', 'amount', 'occurredAt', 'note'], 'budget.create': ['id', 'name', 'limit', 'start', 'endExclusive', 'walletIds', 'categoryIds'], 'budget.update': ['id', 'name', 'limit', 'start', 'endExclusive', 'walletIds', 'categoryIds', 'expectedVersion'], 'budget.delete': ['id', 'expectedVersion'],
     'activity.read': ['id'], 'settings.update': ['timezone', 'onboarded'], 'data.clear': ['confirmation'],
-    'import.receive': ['id', 'source', 'provider', 'sourceId', 'text', 'receivedAt'], 'import.process': ['id', 'expectedVersion'], 'import.ignore': ['id', 'expectedVersion'], 'import.confirm': ['id', 'expectedVersion', 'entry']
+    'import.receive': ['id', 'source', 'provider', 'sourceId', 'text', 'receivedAt'], 'import.process': ['id', 'expectedVersion'], 'import.reparse': ['id', 'expectedVersion', 'text', 'warnings'], 'import.ignore': ['id', 'expectedVersion'], 'import.confirm': ['id', 'expectedVersion', 'entry']
   };
   fields(command, ['type', 'mutationId', 'payload']); if (!Object.hasOwn(commandFields, command.type)) fail('INVALID_INPUT', 'Thao tác không được hỗ trợ.'); fields(command.payload, commandFields[command.type]);
   timestamp(context.now, 'now'); id(command.mutationId, 'mutationId'); const sig = signature(command); const receipt = state.receipts.find(r => r.id === command.mutationId);
@@ -254,8 +254,14 @@ export function applyCommand(state: Ledger, command: Command, context: { now: st
     const payload = p as Revision; const event = find(s.importedEvents, payload.id);
     if (event.version !== payload.expectedVersion) fail('STALE', 'Nội dung Inbox đã thay đổi. Mở lại trước khi duyệt.', 'version');
     if (event.ignored || ['imported', 'duplicate'].includes(event.state)) fail('INVALID_INPUT', 'Nội dung này đã được xử lý.');
-    if (command.type === 'import.process') {
-      if (!['received', 'processing', 'failed'].includes(event.state)) fail('INVALID_INPUT', 'Nội dung đã được phân tích.');
+    if (command.type === 'import.process' || command.type === 'import.reparse') {
+      if (!(command.type === 'import.reparse' ? ['received', 'processing', 'failed', 'needs_review'] : ['received', 'processing', 'failed']).includes(event.state)) fail('INVALID_INPUT', 'Nội dung đã được phân tích.');
+      if (command.type === 'import.reparse') {
+        text(command.payload.text, 'text', MAX_IMPORT_TEXT);
+        if (!Array.isArray(command.payload.warnings) || command.payload.warnings.length > 20) fail('INVALID_INPUT', 'Cảnh báo nhận diện không hợp lệ.', 'warnings');
+        for (const warning of command.payload.warnings) text(warning, 'warnings', 500);
+        event.text = command.payload.text;
+      }
       event.state = 'processing'; event.error = null;
       try { Object.assign(event, parseImportText(event.text)); event.state = 'needs_review'; }
       catch (error) { event.state = 'failed'; event.error = error instanceof Error ? error.message.slice(0, 500) : 'Không phân tích được nội dung.'; }
@@ -263,6 +269,7 @@ export function applyCommand(state: Ledger, command: Command, context: { now: st
         const duplicate = strongImportDuplicate(s, event);
         if (duplicate) { event.state = 'duplicate'; event.duplicateOf = duplicate.id; }
         else if (importFamily(event) && s.importedEvents.some(other => other.id !== event.id && !other.ignored && importFamily(other) === importFamily(event) && (other.text === event.text || (event.amount !== null && event.amount === other.amount)))) event.warnings.push('Có nội dung hoặc số tiền giống một mục khác. Có thể là hai giao dịch thật; kiểm tra trước khi ghi sổ.');
+        if (command.type === 'import.reparse') event.warnings = [...new Set([...event.warnings, ...command.payload.warnings])].slice(0, 20);
       }
     } else if (command.type === 'import.ignore') {
       event.ignored = true;

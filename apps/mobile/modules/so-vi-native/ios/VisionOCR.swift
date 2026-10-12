@@ -27,15 +27,28 @@ public enum VisionOCR {
     }
     guard let image else { throw failure("Không giải mã được ảnh. Chọn ảnh khác hoặc dán văn bản.") }
     let request = VNRecognizeTextRequest(); request.recognitionLevel = .accurate; request.usesLanguageCorrection = false
-    let supported = try request.supportedRecognitionLanguages(); let languages = ["vi-VN", "en-US"].filter { supported.contains($0) }
+    let supported = try request.supportedRecognitionLanguages()
+    let vietnamese = supported.first { $0.lowercased() == "vi" || $0.lowercased().hasPrefix("vi-") }
+    let languages = [vietnamese, supported.contains("en-US") ? "en-US" : nil].compactMap { $0 }
     guard !languages.isEmpty else { throw failure("Vision trên thiết bị chưa hỗ trợ ngôn ngữ nhận diện cần dùng. Hãy dán văn bản.") }
     request.recognitionLanguages = languages
     try VNImageRequestHandler(cgImage: image, orientation: orientation).perform([request])
-    let candidates = (request.results ?? []).sorted { a, b in a.boundingBox.midY != b.boundingBox.midY ? a.boundingBox.midY > b.boundingBox.midY : a.boundingBox.minX < b.boundingBox.minX }.compactMap { $0.topCandidates(1).first }
+    var rows: [[VNRecognizedTextObservation]] = []
+    for observation in (request.results ?? []).sorted(by: { $0.boundingBox.midY > $1.boundingBox.midY }) {
+      let box = observation.boundingBox
+      if let index = rows.firstIndex(where: { row in
+        let other = row[0].boundingBox
+        let overlap = min(box.maxY, other.maxY) - max(box.minY, other.minY)
+        return overlap >= min(box.height, other.height) * 0.5
+      }) { rows[index].append(observation) }
+      else { rows.append([observation]) }
+    }
+    let rowCandidates = rows.map { row in row.sorted { $0.boundingBox.minX < $1.boundingBox.minX }.compactMap { $0.topCandidates(1).first } }
+    let candidates = rowCandidates.flatMap { $0 }
     var warnings: [String] = []
-    if !languages.contains("vi-VN") { warnings.append("Vision trên thiết bị chưa hỗ trợ tiếng Việt; đang dùng tiếng Anh. Kiểm tra dấu và số tiền.") }
+    if vietnamese == nil { warnings.append("Vision trên thiết bị chưa hỗ trợ tiếng Việt; đang dùng tiếng Anh. Kiểm tra dấu và số tiền.") }
     if candidates.contains(where: { $0.confidence < 0.8 }) { warnings.append("Có dòng nhận diện chưa chắc chắn. Kiểm tra từng số tiền và mã tham chiếu.") }
     if maximumPixelSize != nil { warnings.append("Ảnh được thu nhỏ để đọc trong bảng chia sẻ. Kiểm tra văn bản trước khi lưu.") }
-    return VisionOCRResult(text: candidates.map { $0.string }.joined(separator: "\n"), languages: languages, warnings: warnings)
+    return VisionOCRResult(text: rowCandidates.map { $0.map { $0.string }.joined(separator: " ") }.filter { !$0.isEmpty }.joined(separator: "\n"), languages: languages, warnings: warnings)
   }
 }

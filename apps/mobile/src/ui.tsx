@@ -43,18 +43,20 @@ export function useDraft(initial: Record<string, unknown>, entity?: { table: 'wa
   const { assertUnlocked } = useAppLock();
   const { execute, revision, refresh } = useLedger(); const [values, setValues] = useState(initial); const [errors, setErrors] = useState<Record<string, string>>({}); const [busy, setBusy] = useState(false); const [completed, setCompleted] = useState(false); const [baseRevision, setBaseRevision] = useState(revision); const [notice, setNotice] = useState(''); const navigation = useNavigation(); const initialText = useRef(JSON.stringify(initial)); const locked = useRef(false); const mutationId = useRef(newId());
   const entitySnapshot = useRef(entity ? { table: entity.table, id: entity.row.id, json: entityText(entity.row) } : null);
+  const navigateBack = useRef(true);
   const dirty = JSON.stringify(values) !== initialText.current;
   usePreventRemove((dirty || busy || externalBusy) && !completed, ({ data }) => { if (locked.current || externalBusy) { Alert.alert(externalBusy ? 'Đang nhận diện ảnh' : 'Đang lưu', externalBusy ? 'Chờ đọc ảnh và xóa bản tạm trước khi rời biểu mẫu. Bản nháp được giữ.' : 'Chờ thao tác hoàn tất trước khi rời biểu mẫu.'); return; } Alert.alert('Bỏ bản nháp?', 'Thay đổi chưa lưu sẽ bị bỏ.', [{ text: 'Tiếp tục sửa', style: 'cancel' }, { text: 'Bỏ bản nháp', style: 'destructive', onPress: () => { try { assertUnlocked(); navigation.dispatch(data.action); } catch (error) { setErrors({ form: errorMessage(error) }); } } }]); });
-  useEffect(() => { if (completed) { if (router.canGoBack()) router.back(); else router.replace('/'); } }, [completed]);
+  useEffect(() => { if (completed && navigateBack.current) { if (router.canGoBack()) router.back(); else router.replace('/'); } }, [completed]);
   const set = (key: string, value: unknown) => { setValues(v => ({ ...v, [key]: value })); setErrors({}); setNotice(''); };
-  const save = async (build: (mutationId: string) => Command, after?: (result: Awaited<ReturnType<typeof execute>>) => Promise<void>) => {
+  const save = async (build: (mutationId: string) => Command, after?: (result: Awaited<ReturnType<typeof execute>>) => Promise<void>, options: { navigateBack?: boolean } = {}) => {
     if (locked.current) return; locked.current = true; setBusy(true); setErrors({}); setNotice('');
-    try { const result = await execute(build(mutationId.current), baseRevision); if (after) await after(result); setCompleted(true); }
+    navigateBack.current = options.navigateBack !== false;
+    try { const result = await execute(build(mutationId.current), baseRevision); setBaseRevision(result.revision); if (after) await after(result); setCompleted(true); }
     catch (e) { setErrors({ [e instanceof DomainError && e.field ? e.field : 'form']: errorMessage(e) }); }
     finally { locked.current = false; setBusy(false); }
   };
   const reload = async () => { setNotice(''); try { const current = await refresh(); const snapshot = entitySnapshot.current; if (snapshot && entityText(current.ledger[snapshot.table].find(row => row.id === snapshot.id)) !== snapshot.json) { setErrors({ form: 'Bản ghi đã thay đổi hoặc được khôi phục từ backup. Bản nháp được giữ để đối chiếu; quay lại và mở bản ghi mới trước khi lưu.' }); return; } setBaseRevision(current.revision); setErrors({}); setNotice('Đã tải dữ liệu và giữ bản nháp. Kiểm tra lại lựa chọn trước khi lưu.'); } catch (e) { setErrors({ form: errorMessage(e) }); } };
-  return { values, errors, busy, set, save, reload, baseRevision, notice };
+  return { values, errors, busy, completed, set, save, reload, baseRevision, notice };
 }
 export function FormFooter({ draft }: { draft: ReturnType<typeof useDraft> }) { return <>{draft.errors.form && <Text accessibilityRole="alert" style={styles.error}>{draft.errors.form}</Text>}{Object.entries(draft.errors).filter(([key]) => key !== 'form').map(([key, value]) => <Text key={key} accessibilityRole="alert" style={styles.error}>{value}</Text>)}{draft.notice && <Text accessibilityLiveRegion="polite" style={styles.secondary}>{draft.notice}</Text>}<Button title="Tải lại dữ liệu, giữ bản nháp" secondary onPress={() => void draft.reload()} disabled={draft.busy} /></>; }
 
