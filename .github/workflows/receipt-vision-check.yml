@@ -1,0 +1,25 @@
+name: Receipt Vision diagnostic
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: receipt-vision-diagnostic
+  cancel-in-progress: false
+jobs:
+  check:
+    runs-on: macos-26
+    timeout-minutes: 8
+    defaults:
+      run:
+        working-directory: apps/mobile
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Check actual Vision with synthetic Vietnamese receipts
+        run: |
+          export DEVELOPER_DIR="/Applications/Xcode_26.6.app/Contents/Developer"
+          test -d "$DEVELOPER_DIR"
+          swiftc -swift-version 5 modules/so-vi-native/ios/VisionOCR.swift tests/native-receipt-vision-check.swift -o "$RUNNER_TEMP/receipt-vision-check"
+          "$RUNNER_TEMP/receipt-vision-check"
