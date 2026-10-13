@@ -16,7 +16,31 @@ export const styles = StyleSheet.create({
   helper: { color: colors.secondary, fontSize: 14, lineHeight: 20, fontStyle: 'italic', flexShrink: 1 }, advisory: { color: colors.warning, fontSize: 14, lineHeight: 20, fontStyle: 'italic', flexShrink: 1 },
   reviewAmountInput: { borderColor: colors.accent, backgroundColor: colors.raised, fontSize: 28, fontVariant: ['tabular-nums'] }, confirmation: { borderColor: colors.accent, backgroundColor: colors.raised }, confirmationAmount: { color: colors.text, fontSize: 32, fontWeight: '700', fontVariant: ['tabular-nums'], flexShrink: 1 },
   card: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 12, gap: 8 }, input: { minHeight: 44, borderWidth: 1, borderColor: colors.border, borderRadius: 12, backgroundColor: colors.surface, color: colors.text, fontSize: 16, padding: 10 },
-  button: { minHeight: 44, minWidth: 44, paddingHorizontal: 16, paddingVertical: 10, backgroundColor: colors.accent, borderRadius: 12, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8 }, buttonText: { color: colors.background, fontSize: 16, fontWeight: '600', flexShrink: 1 }, chip: { minHeight: 44, borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 10, justifyContent: 'center', backgroundColor: colors.surface }, error: { color: colors.expense, fontSize: 14, lineHeight: 21 }, notice: { padding: 12, color: colors.income, backgroundColor: colors.raised, fontSize: 14 }, divider: { height: 1, backgroundColor: colors.border }, progress: { height: 8, borderRadius: 4, backgroundColor: colors.raised, overflow: 'hidden' }, progressFill: { height: 8, backgroundColor: colors.accent }, fab: { position: 'absolute', bottom: 24, right: 16, width: 56, height: 56, borderRadius: 28, backgroundColor: colors.accent, justifyContent: 'center', alignItems: 'center' }
+  button: { minHeight: 44, minWidth: 44, paddingHorizontal: 16, paddingVertical: 10, backgroundColor: colors.accent, borderRadius: 12, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8 }, buttonText: { color: colors.background, fontSize: 16, fontWeight: '600', flexShrink: 1 }, chip: { minHeight: 44, borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 10, justifyContent: 'center', backgroundColor: colors.surface }, error: { color: colors.expense, fontSize: 14, lineHeight: 21 }, notice: { padding: 12, color: colors.income, backgroundColor: colors.raised, fontSize: 14 }, divider: { height: 1, backgroundColor: colors.border }, progress: { height: 8, borderRadius: 4, backgroundColor: colors.raised, overflow: 'hidden' }, progressFill: { height: 8, backgroundColor: colors.accent }, fab: { position: 'absolute', bottom: 24, right: 16, width: 56, height: 56, borderRadius: 28, backgroundColor: colors.accent, justifyContent: 'center', alignItems: 'center' },
+  timeline: { paddingLeft: 18, borderLeftWidth: 2, borderLeftColor: colors.border, marginLeft: 10, gap: 14, marginVertical: 6 },
+  timelineTrack: { position: 'absolute', left: -2, top: 0, bottom: 0, width: 2, backgroundColor: colors.border },
+  timelineNode: { position: 'absolute', left: -27, top: 12, width: 18, height: 18, borderRadius: 9, borderWidth: 2, borderColor: colors.accent, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
+  timelineNodeCompleted: { borderColor: colors.income, backgroundColor: colors.income },
+  timelineNodeLocked: { borderColor: colors.warning, backgroundColor: colors.raised },
+  timelineNodePast: { borderColor: colors.border, backgroundColor: colors.surface },
+  badge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, gap: 4 },
+  badgeSuccess: { backgroundColor: 'rgba(87, 223, 172, 0.15)', borderWidth: 1, borderColor: colors.income },
+  badgeWarning: { backgroundColor: 'rgba(244, 197, 106, 0.15)', borderWidth: 1, borderColor: colors.warning },
+  badgeInfo: { backgroundColor: 'rgba(32, 211, 162, 0.12)', borderWidth: 1, borderColor: colors.accent },
+  badgeMuted: { backgroundColor: colors.raised, borderWidth: 1, borderColor: colors.border },
+  badgeText: { fontSize: 12, fontWeight: '600', color: colors.text },
+  kpiHighlight: { fontSize: 32, fontWeight: '800', color: colors.accent, fontVariant: ['tabular-nums'] },
+  kpiLabel: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.8, color: colors.secondary },
+  metricGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
+  metricBox: { flexGrow: 1, flexBasis: 120, padding: 8, backgroundColor: colors.raised, borderRadius: 8, gap: 2 },
+  metricVal: { fontSize: 14, fontWeight: '600', color: colors.text, fontVariant: ['tabular-nums'] },
+  metricSub: { fontSize: 11, color: colors.secondary },
+  progressBar: { height: 8, borderRadius: 4, backgroundColor: colors.raised, flexDirection: 'row', overflow: 'hidden', marginVertical: 6 },
+  barSpent: { backgroundColor: colors.income, height: 8 },
+  barPlanned: { backgroundColor: colors.transfer, height: 8 },
+  barFixed: { backgroundColor: colors.warning, height: 8 },
+  barReserve: { backgroundColor: '#A78BFA', height: 8 },
+  dayMilestoneHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.border, marginBottom: 8 }
 });
 export function Icon({ name, color = colors.secondary, size = 22 }: { name: string; color?: ColorValue; size?: number }) { const known = Object.hasOwn(Ionicons.glyphMap, name) ? name : 'wallet'; return <Ionicons name={known as keyof typeof Ionicons.glyphMap} color={color} size={size} accessible={false} />; }
 export function Button({ title, onPress, disabled = false, secondary = false, danger = false, icon }: { title: string; onPress: () => void; disabled?: boolean; secondary?: boolean; danger?: boolean; icon?: string }) {

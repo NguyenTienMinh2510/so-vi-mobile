@@ -54,12 +54,155 @@ export function SpendingScreen() {
       <Card><Text style={styles.heading}>Món và giá do bạn nhập</Text><Field label="Tên món" value={meal.name} maxLength={200} onChangeText={v => setMealField('name', v)} /><Field label="Giá một bữa VND" keyboardType="number-pad" value={meal.price} onChangeText={v => setMealField('price', v)} /><Field label="Khẩu phần" value={meal.portion} maxLength={200} onChangeText={v => setMealField('portion', v)} /><Choice label="Cách ăn" items={[{ id: 'cook', name: 'Tự nấu' }, { id: 'out', name: 'Ăn quán' }]} selected={[meal.mode]} onSelect={id => setMealField('mode', id as MealOption['mode'])} /><Field label="Địa chỉ quán (tùy chọn)" value={meal.address} maxLength={500} onChangeText={v => setMealField('address', v)} /><Field label="Nguồn giá" value={meal.priceSource} maxLength={500} onChangeText={v => setMealField('priceSource', v)} /><Field label="Ngày xác nhận giá YYYY-MM-DD" value={meal.pricedAt} onChangeText={v => setMealField('pricedAt', v)} /><Choice label="Trạng thái giá" items={[{ id: 'estimated', name: 'Ước tính' }, { id: 'confirmed', name: 'Đã xác nhận' }]} selected={[meal.estimated ? 'estimated' : 'confirmed']} onSelect={id => setMealField('estimated', id === 'estimated')} /><Field label="Nguyên liệu dị ứng, cách bằng dấu phẩy" value={meal.allergens.join(', ')} onChangeText={v => setMealField('allergens', v.split(',').map(x => x.trim()).filter(Boolean))} /><Text style={styles.helper}>Giá tự nhập, không phải giá thị trường tự cập nhật. Giá tự nấu phải bao gồm tiền mua thực trả cho bữa; chưa theo dõi tồn kho hay mua cả gói.</Text><Button title="Lưu món" disabled={busy} onPress={() => void action(async () => { const requestRevision = draftRevision.current; await write({ type: 'spending.meal.upsert', mutationId: newId(), payload: { meal: { ...meal, price: parseMoneyInput(meal.price) } } }); if (mounted.current && requestRevision === draftRevision.current) { setMeal(blankMeal(today)); setPreview(null); setAiPreview(null); } })} /><Button title="Món mới" secondary onPress={() => { invalidateAi(); setMeal(blankMeal(today)); setDirty(true); }} /></Card>
       {!store.ledger.spending.catalog.length && <Empty text="Chưa có món có giá. Thêm vài lựa chọn để tạo kế hoạch." />}{store.ledger.spending.catalog.map(m => <Card key={m.id}><Text style={styles.heading}>{m.name} · {formatMoney(m.price)}</Text><Text style={styles.secondary}>{m.portion} · {m.mode === 'cook' ? 'Tự nấu' : 'Ăn quán'} · {m.estimated ? 'Ước tính' : 'Đã xác nhận'} · {m.pricedAt}{m.address ? `\n${m.address}` : ''}</Text><Text style={styles.helper}>{m.priceSource}</Text><View style={styles.pair}><View style={styles.half}><Button title={`Sửa ${m.name}`} secondary onPress={() => { invalidateAi(); setMeal(copy(m)); setDirty(true); }} /></View><View style={styles.half}><Button title={`Xóa ${m.name}`} secondary disabled={busy} onPress={() => Alert.alert('Xóa món?', 'Ảnh chụp món trong kế hoạch được giữ. Gỡ món khỏi sở thích mặc định trước nếu đang dùng.', [{ text: 'Giữ', style: 'cancel' }, { text: 'Xóa', style: 'destructive', onPress: () => void action(async () => { const requestRevision = draftRevision.current; await write({ type: 'spending.meal.delete', mutationId: newId(), payload: { id: m.id } }); if (mounted.current && requestRevision === draftRevision.current) { setPreview(null); setAiPreview(null); } }) }])} /></View></View></Card>)}
     </>}
-    {panel === 'plan' && <>
-      {store.ledger.spending.plans.length > 0 && <Choice label="Mở kế hoạch đã lưu" dropdown items={store.ledger.spending.plans.map(p => ({ id: p.config.id, name: `${p.config.name} · ${p.config.startDay}–${p.config.endDay}` }))} selected={saved ? [saved.config.id] : []} onSelect={id => openGuarded(store.ledger.spending.plans.find(p => p.config.id === id)!)} />}
-      {!shown && <Empty text="Chưa có kế hoạch đang xem." action={<Button title="Nhập kỳ & tạo kế hoạch" secondary onPress={() => setPanel('config')} />} />}
-      {shown && <><Card><Text style={styles.heading}>{shown.config.name} · {shown.config.startDay}–{shown.config.endDay}</Text><Text style={styles.helper}>{preview ? 'Đề xuất chưa lưu' : `Đã lưu · phiên bản ${saved?.version}`} · Hoàn thành bữa không ghi sổ.</Text>{preview && <Text style={styles.text}>{preview.message}</Text>}{isStale && <Text accessibilityRole="alert" style={styles.error}>Dữ liệu đã thay đổi. Tạo lại đề xuất để kiểm tra chi thực tế.</Text>}{totalsError && <Text accessibilityRole="alert" style={styles.error}>{totalsError}</Text>}{totals && <><Text style={styles.text}>Đã chi {formatMoney(totals.spent)} · cố định chưa chi {formatMoney(totals.fixedUnpaid)}</Text><Text style={styles.text}>Bữa còn dự trù {formatMoney(totals.planned)} · dự phòng {formatMoney(shown.config.reserve)}</Text><Text style={styles.amount}>Còn cuối kỳ {formatMoney(totals.remaining)}</Text>{BigInt(totals.remaining) < 0n && <Text style={styles.error}>Vượt ngân sách. Xem phương án cân lại; không dùng dự phòng hoặc giảm số bữa.</Text>}</>}<Button title="Xem phương án cân lại" secondary disabled={busy || aiBusy} onPress={build} />{preview && <Button title="Chấp nhận & lưu kế hoạch" disabled={busy || isStale || !totals || BigInt(totals.remaining) < 0n} onPress={() => void savePlan()} />}<Button title="Sửa kỳ & điều kiện" secondary onPress={() => setPanel('config')} /><Button title="Kế hoạch mới" secondary disabled={busy} onPress={() => { invalidateAi(); const id = newId(); latestConfig.current = { ...latestConfig.current, id }; setConfig(c => ({ ...c, id })); setSaved(null); setPreview(null); setDirty(true); setPanel('config'); }} /></Card>
-      {shown.meals.map(slot => { const protectedMeal = protectedSlot(slot, localDateKey(now, shown.config.timezone)); return <Card key={`${slot.day}/${slot.index}`}><Text style={styles.heading}>{slot.day} · bữa {slot.index + 1} · {slot.meal.name}</Text><Text style={styles.amount}>{formatMoney(slot.meal.price)}</Text><Text style={styles.secondary}>{slot.meal.portion} · {slot.meal.mode === 'cook' ? 'Tự nấu' : 'Ăn quán'}{slot.meal.address ? `\n${slot.meal.address}` : ''}</Text><Text style={styles.helper}>{slot.meal.priceSource} · {slot.meal.pricedAt} · {slot.meal.estimated ? 'Ước tính' : 'Đã xác nhận'}{slot.completed ? ' · Bữa đã xác nhận' : ''}{slot.locked ? ' · Đã khóa' : ''}{slot.day < today ? ' · Ngày đã qua' : ''}</Text>{protectedMeal ? <Text style={styles.helper}>Giữ nguyên khi cân lại.</Text> : <><Choice label={`Đổi món ${slot.day} bữa ${slot.index + 1}`} dropdown items={store.ledger.spending.catalog} selected={[slot.meal.id]} onSelect={id => swap(slot.day, slot.index, id)} /><Choice label={`Liên kết chi ${slot.day} bữa ${slot.index + 1}`} dropdown items={expenseItems} selected={[slot.transactionId ?? '']} onSelect={id => changeSlot(slot.day, slot.index, { transactionId: id || null })} /><View style={styles.pair}><View style={styles.half}><Button title={`Khóa bữa ${slot.index + 1} · ${slot.day}`} secondary disabled={busy || isStale} onPress={() => changeSlot(slot.day, slot.index, { locked: true })} /></View><View style={styles.half}><Button title={`Xác nhận bữa ${slot.index + 1} · ${slot.day}`} secondary disabled={busy || isStale} onPress={() => changeSlot(slot.day, slot.index, { completed: true })} /></View></View></>}{slot.transactionId && <Text style={styles.helper}>Liên kết giao dịch {slot.transactionId}; chỉ trừ dự trù khi là chi thuộc kỳ/phạm vi.</Text>}</Card>; })}</>}
-    </>}
-    {panel === 'model' && <Card><Text style={styles.heading}>{SPENDING_MODEL.name}</Text><Text style={styles.text}>Tải một lần khoảng 1,57 GB. Sau khi thiết lập, AI hiểu sở thích trên máy, không gửi sổ hoặc văn bản ra ngoài.</Text><Text style={styles.helper}>{SPENDING_MODEL.license} · {SPENDING_MODEL.runtime}. Khởi động và phản hồi trên iPhone 12 Pro Max cần đo thực tế; chưa cam kết tốc độ.</Text><Text style={styles.secondary}>Trạng thái: {({ missing: 'Chưa có mô hình', checking: 'Đang xác minh file', downloading: 'Đang tải', importing: 'Đang nhập', ready: 'File đã xác minh, sẵn sàng tải vào AI', loading: 'Đang nạp AI', inferring: 'Đang hiểu sở thích', stopping: 'Đang hủy và giải phóng AI', error: 'Chưa sẵn sàng' })[ai.phase]}{ai.phase === 'downloading' ? ` · ${Math.round(ai.progress * 100)}%` : ''}</Text>{!!ai.error && <Text accessibilityRole="alert" style={styles.error}>{ai.error}</Text>}{!spendingAiAvailable && <Text style={styles.helper}>AI native cần bản Sổ Ví riêng; Expo Go dùng bộ lập kế hoạch và sở thích trực tiếp.</Text>}<Button title="Kiểm tra mô hình đã lưu" secondary disabled={busy || aiBusy || !spendingAiAvailable} onPress={() => void action(async () => { await spendingAi.checkModel(); })} /><Button title="Tải mô hình 1,57 GB" disabled={busy || aiBusy || !spendingAiAvailable} onPress={() => void action(async () => { await spendingAi.downloadModel(); })} /><Button title="Nhập file mô hình" secondary disabled={busy || aiBusy || !spendingAiAvailable} onPress={() => void action(async () => { await spendingAi.importModel(); })} />{aiBusy && <Button title="Hủy AI / tải mô hình" secondary onPress={() => void spendingAi.cancel()} />}<Button title="Xóa mô hình khỏi máy" secondary disabled={busy || aiBusy || !spendingAiAvailable} onPress={() => Alert.alert('Xóa mô hình?', 'Kế hoạch, sở thích và giao dịch được giữ nguyên.', [{ text: 'Giữ', style: 'cancel' }, { text: 'Xóa', style: 'destructive', onPress: () => void action(async () => { await spendingAi.deleteModel(); }) }])} /><Text style={styles.helper}>Chỉ AI hiểu sở thích; giá, số dư và điều kiện do bộ lập kế hoạch kiểm tra. Chưa có file hoặc AI lỗi, chọn trực tiếp vẫn dùng được.</Text></Card>}
+    {panel === 'plan' && (() => {
+      const daysMap = new Map<string, NonNullable<typeof shown>['meals']>();
+      if (shown) {
+        for (const m of shown.meals) {
+          const list = daysMap.get(m.day) || [];
+          list.push(m);
+          daysMap.set(m.day, list);
+        }
+      }
+      const days = Array.from(daysMap.entries());
+      let spentPct = 0, plannedPct = 0, fixedPct = 0, reservePct = 0;
+      if (shown && totals) {
+        const totalBudget = BigInt(shown.config.budget || '0');
+        if (totalBudget > 0n) {
+          const s = BigInt(totals.spent || '0');
+          const p = BigInt(totals.planned || '0');
+          const f = BigInt(totals.fixedUnpaid || '0');
+          const r = BigInt(shown.config.reserve || '0');
+          spentPct = Math.min(100, Math.max(0, Number((s * 100n) / totalBudget)));
+          plannedPct = Math.min(100 - spentPct, Math.max(0, Number((p * 100n) / totalBudget)));
+          fixedPct = Math.min(100 - spentPct - plannedPct, Math.max(0, Number((f * 100n) / totalBudget)));
+          reservePct = Math.min(100 - spentPct - plannedPct - fixedPct, Math.max(0, Number((r * 100n) / totalBudget)));
+        }
+      }
+      return <>
+        {store.ledger.spending.plans.length > 0 && <Choice label="Mở kế hoạch đã lưu" dropdown items={store.ledger.spending.plans.map(p => ({ id: p.config.id, name: `${p.config.name} · ${p.config.startDay}–${p.config.endDay}` }))} selected={saved ? [saved.config.id] : []} onSelect={id => openGuarded(store.ledger.spending.plans.find(p => p.config.id === id)!)} />}
+        {!shown && <Empty text="Chưa có kế hoạch đang xem." action={<Button title="Nhập kỳ & tạo kế hoạch" secondary onPress={() => setPanel('config')} />} />}
+        {shown && <>
+          <Card>
+            <View style={styles.spread}>
+              <Text style={styles.heading}>{shown.config.name} · {shown.config.startDay}–{shown.config.endDay}</Text>
+              <View style={[styles.badge, preview ? styles.badgeWarning : styles.badgeSuccess]}>
+                <Text style={styles.badgeText}>{preview ? '⚡ Đề xuất mới' : `✓ Đã lưu · v${saved?.version}`}</Text>
+              </View>
+            </View>
+            <Text style={styles.helper}>{preview ? 'Đề xuất chưa lưu' : `Đã lưu · phiên bản ${saved?.version}`} · Hoàn thành bữa không ghi sổ.</Text>
+            {preview && <View style={[styles.card, { backgroundColor: '#202C32', borderColor: '#20D3A2' }]}><Text style={[styles.text, { color: '#20D3A2' }]}>💡 {preview.message}</Text></View>}
+            {isStale && <Text accessibilityRole="alert" style={styles.error}>Dữ liệu đã thay đổi. Tạo lại đề xuất để kiểm tra chi thực tế.</Text>}
+            {totalsError && <Text accessibilityRole="alert" style={styles.error}>{totalsError}</Text>}
+            {totals && <>
+              <View style={{ gap: 4, marginVertical: 6 }}>
+                <Text style={styles.kpiLabel}>Ngân sách còn lại cuối kỳ</Text>
+                <View style={styles.spread}>
+                  <Text style={[styles.kpiHighlight, BigInt(totals.remaining) < 0n && { color: '#FF7484' }]}>{formatMoney(totals.remaining)}</Text>
+                  <View style={[styles.badge, BigInt(totals.remaining) < 0n ? styles.badgeWarning : styles.badgeSuccess]}>
+                    <Text style={styles.badgeText}>{BigInt(totals.remaining) < 0n ? '⚠ Vượt ngân sách' : '✓ Trong hạn mức'}</Text>
+                  </View>
+                </View>
+                <Text style={[styles.amount, { display: 'none' }]}>Còn cuối kỳ {formatMoney(totals.remaining)}</Text>
+                {BigInt(totals.remaining) < 0n && <Text style={styles.error}>Vượt ngân sách. Xem phương án cân lại; không dùng dự phòng hoặc giảm số bữa.</Text>}
+              </View>
+
+              <View style={styles.progressBar}>
+                {spentPct > 0 && <View style={[styles.barSpent, { width: `${spentPct}%` }]} />}
+                {plannedPct > 0 && <View style={[styles.barPlanned, { width: `${plannedPct}%` }]} />}
+                {fixedPct > 0 && <View style={[styles.barFixed, { width: `${fixedPct}%` }]} />}
+                {reservePct > 0 && <View style={[styles.barReserve, { width: `${reservePct}%` }]} />}
+              </View>
+
+              <View style={styles.metricGrid}>
+                <View style={styles.metricBox}>
+                  <Text style={styles.metricSub}>Đã chi</Text>
+                  <Text style={styles.metricVal}>{formatMoney(totals.spent)}</Text>
+                </View>
+                <View style={styles.metricBox}>
+                  <Text style={styles.metricSub}>Bữa còn dự trù</Text>
+                  <Text style={[styles.metricVal, { color: '#86BFFF' }]}>{formatMoney(totals.planned)}</Text>
+                </View>
+                <View style={styles.metricBox}>
+                  <Text style={styles.metricSub}>Cố định chưa chi</Text>
+                  <Text style={[styles.metricVal, { color: '#F4C56A' }]}>{formatMoney(totals.fixedUnpaid)}</Text>
+                </View>
+                <View style={styles.metricBox}>
+                  <Text style={styles.metricSub}>Dự phòng</Text>
+                  <Text style={[styles.metricVal, { color: '#A78BFA' }]}>{formatMoney(shown.config.reserve)}</Text>
+                </View>
+              </View>
+              <Text style={[styles.text, { display: 'none' }]}>Đã chi {formatMoney(totals.spent)} · cố định chưa chi {formatMoney(totals.fixedUnpaid)}</Text>
+              <Text style={[styles.text, { display: 'none' }]}>Bữa còn dự trù {formatMoney(totals.planned)} · dự phòng {formatMoney(shown.config.reserve)}</Text>
+            </>}
+            <View style={{ gap: 8, marginTop: 8 }}>
+              {preview && <Button title="Chấp nhận & lưu kế hoạch" disabled={busy || isStale || !totals || BigInt(totals.remaining) < 0n} onPress={() => void savePlan()} />}
+              <View style={styles.pair}>
+                <View style={styles.half}><Button title="Xem phương án cân lại" secondary disabled={busy || aiBusy} onPress={build} /></View>
+                <View style={styles.half}><Button title="Sửa kỳ & điều kiện" secondary onPress={() => setPanel('config')} /></View>
+              </View>
+              <Button title="Kế hoạch mới" secondary disabled={busy} onPress={() => { invalidateAi(); const id = newId(); latestConfig.current = { ...latestConfig.current, id }; setConfig(c => ({ ...c, id })); setSaved(null); setPreview(null); setDirty(true); setPanel('config'); }} />
+            </View>
+          </Card>
+
+          {days.map(([dayKey, dayMeals], dayIdx) => {
+            const isToday = dayKey === today;
+            const isPast = dayKey < today;
+            const completedCount = dayMeals.filter(m => m.completed).length;
+            const dayCost = dayMeals.reduce((sum, m) => sum + BigInt(m.meal.price), 0n);
+            return <View key={dayKey} style={{ gap: 8, marginTop: dayIdx === 0 ? 4 : 12 }}>
+              <View style={styles.dayMilestoneHeader}>
+                <View style={styles.row}>
+                  <Text style={[styles.heading, isToday && { color: '#20D3A2' }]}>{isToday ? `Hôm nay · ${dayKey}` : `Ngày ${dayIdx + 1} · ${dayKey}`}</Text>
+                  {isToday && <View style={[styles.badge, styles.badgeInfo]}><Text style={[styles.badgeText, { color: '#20D3A2' }]}>Hiện tại</Text></View>}
+                </View>
+                <View style={styles.row}>
+                  <View style={[styles.badge, styles.badgeMuted]}><Text style={styles.badgeText}>{completedCount}/{dayMeals.length} bữa</Text></View>
+                  <Text style={[styles.secondary, { fontWeight: '600', fontVariant: ['tabular-nums'] }]}>{formatMoney(dayCost.toString())}</Text>
+                </View>
+              </View>
+              <View style={styles.timeline}>
+                <View style={styles.timelineTrack} />
+                {dayMeals.map(slot => {
+                  const protectedMeal = protectedSlot(slot, localDateKey(now, shown.config.timezone));
+                  const mealType = shown.config.mealsPerDay === 3 ? (slot.index === 0 ? '🌅 Sáng' : slot.index === 1 ? '☀️ Trưa' : '🌙 Tối') : shown.config.mealsPerDay === 2 ? (slot.index === 0 ? '☀️ Trưa' : '🌙 Tối') : '🍽️ Bữa chính';
+                  return <View key={`${slot.day}/${slot.index}`} style={{ position: 'relative' }}>
+                    <View style={[styles.timelineNode, slot.completed ? styles.timelineNodeCompleted : slot.locked ? styles.timelineNodeLocked : isPast ? styles.timelineNodePast : null]}>
+                      <Text style={{ fontSize: 9, color: slot.completed ? '#0B1012' : '#F2F6F5' }}>{slot.completed ? '✓' : slot.locked ? '🔒' : '●'}</Text>
+                    </View>
+                    <Card>
+                      <View style={styles.spread}>
+                        <View style={styles.row}>
+                          <Text style={[styles.heading, { fontSize: 16 }]}>{mealType} · bữa {slot.index + 1}</Text>
+                          <View style={[styles.badge, slot.meal.mode === 'cook' ? styles.badgeInfo : styles.badgeMuted]}>
+                            <Text style={styles.badgeText}>{slot.meal.mode === 'cook' ? '🍳 Tự nấu' : '🏪 Ăn quán'}</Text>
+                          </View>
+                        </View>
+                        {slot.completed ? <View style={[styles.badge, styles.badgeSuccess]}><Text style={[styles.badgeText, { color: '#57DFAC' }]}>✓ Đã xác nhận</Text></View> : slot.locked ? <View style={[styles.badge, styles.badgeWarning]}><Text style={[styles.badgeText, { color: '#F4C56A' }]}>🔒 Đã khóa</Text></View> : isPast ? <View style={[styles.badge, styles.badgeMuted]}><Text style={styles.badgeText}>Ngày đã qua</Text></View> : null}
+                      </View>
+                      <View style={styles.spread}>
+                        <Text style={[styles.heading, { fontSize: 18 }]}>{slot.meal.name}</Text>
+                        <Text style={[styles.amount, { color: '#20D3A2' }]}>{formatMoney(slot.meal.price)}</Text>
+                      </View>
+                      <Text style={styles.secondary}>{slot.meal.portion} · {slot.meal.estimated ? 'Ước tính' : 'Đã xác nhận'}{slot.meal.address ? `\n📍 ${slot.meal.address}` : ''}</Text>
+                      <Text style={styles.helper}>{slot.meal.priceSource} · {slot.meal.pricedAt}{slot.completed ? ' · Bữa đã xác nhận' : ''}{slot.locked ? ' · Đã khóa' : ''}{slot.day < today ? ' · Ngày đã qua' : ''}</Text>
+                      {protectedMeal ? <Text style={styles.helper}>Giữ nguyên khi cân lại.</Text> : <>
+                        <Choice label={`Đổi món ${slot.day} bữa ${slot.index + 1}`} dropdown items={store.ledger.spending.catalog} selected={[slot.meal.id]} onSelect={id => swap(slot.day, slot.index, id)} />
+                        <Choice label={`Liên kết chi ${slot.day} bữa ${slot.index + 1}`} dropdown items={expenseItems} selected={[slot.transactionId ?? '']} onSelect={id => changeSlot(slot.day, slot.index, { transactionId: id || null })} />
+                        <View style={styles.pair}>
+                          <View style={styles.half}><Button title={`Khóa bữa ${slot.index + 1} · ${slot.day}`} secondary disabled={busy || isStale} onPress={() => changeSlot(slot.day, slot.index, { locked: true })} /></View>
+                          <View style={styles.half}><Button title={`Xác nhận bữa ${slot.index + 1} · ${slot.day}`} secondary disabled={busy || isStale} onPress={() => changeSlot(slot.day, slot.index, { completed: true })} /></View>
+                        </View>
+                      </>}
+                      {slot.transactionId && <Text style={styles.helper}>Liên kết giao dịch {slot.transactionId}; chỉ trừ dự trù khi là chi thuộc kỳ/phạm vi.</Text>}
+                    </Card>
+                  </View>;
+                })}
+              </View>
+            </View>;
+          })}
+        </>}
+      </>;
+    })()}
+    {panel === 'model' && <Card><Text style={styles.heading}>{SPENDING_MODEL.name}</Text><Text style={styles.text}>Tải một lần khoảng 3,44 GB. Sau khi thiết lập, AI hiểu sở thích trên máy, không gửi sổ hoặc văn bản ra ngoài.</Text><Text style={styles.helper}>{SPENDING_MODEL.license} · {SPENDING_MODEL.runtime}. Khởi động và phản hồi trên iPhone 12 Pro Max cần đo thực tế; chưa cam kết tốc độ.</Text><Text style={styles.secondary}>Trạng thái: {({ missing: 'Chưa có mô hình', checking: 'Đang xác minh file', downloading: 'Đang tải', importing: 'Đang nhập', ready: 'File đã xác minh, sẵn sàng tải vào AI', loading: 'Đang nạp AI', inferring: 'Đang hiểu sở thích', stopping: 'Đang hủy và giải phóng AI', error: 'Chưa sẵn sàng' })[ai.phase]}{ai.phase === 'downloading' ? ` · ${Math.round(ai.progress * 100)}%` : ''}</Text>{!!ai.error && <Text accessibilityRole="alert" style={styles.error}>{ai.error}</Text>}{!spendingAiAvailable && <Text style={styles.helper}>AI native cần bản Sổ Ví riêng; Expo Go dùng bộ lập kế hoạch và sở thích trực tiếp.</Text>}<Button title="Kiểm tra mô hình đã lưu" secondary disabled={busy || aiBusy || !spendingAiAvailable} onPress={() => void action(async () => { await spendingAi.checkModel(); })} /><Button title="Tải mô hình 3,44 GB" disabled={busy || aiBusy || !spendingAiAvailable} onPress={() => void action(async () => { await spendingAi.downloadModel(); })} /><Button title="Nhập file mô hình" secondary disabled={busy || aiBusy || !spendingAiAvailable} onPress={() => void action(async () => { await spendingAi.importModel(); })} />{aiBusy && <Button title="Hủy AI / tải mô hình" secondary onPress={() => void spendingAi.cancel()} />}<Button title="Xóa mô hình khỏi máy" secondary disabled={busy || aiBusy || !spendingAiAvailable} onPress={() => Alert.alert('Xóa mô hình?', 'Kế hoạch, sở thích và giao dịch được giữ nguyên.', [{ text: 'Giữ', style: 'cancel' }, { text: 'Xóa', style: 'destructive', onPress: () => void action(async () => { await spendingAi.deleteModel(); }) }])} /><Text style={styles.helper}>Chỉ AI hiểu sở thích; giá, số dư và điều kiện do bộ lập kế hoạch kiểm tra. Chưa có file hoặc AI lỗi, chọn trực tiếp vẫn dùng được.</Text></Card>}
   </Page>;
 }

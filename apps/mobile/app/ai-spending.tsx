@@ -1,1 +1,1 @@
-export { SpendingScreen as default } from '../src/spending-screen';
+export { RoadmapScreen as default } from '../src/spending-roadmap-screen';

@@ -30,7 +30,7 @@ export type Command = Mutation<'wallet.create', Create<Wallet>> | Mutation<'wall
   | Mutation<'transfer.create', Create<Transfer>> | Mutation<'transfer.update', Update<Transfer>> | Mutation<'transfer.delete', Revision>
   | Mutation<'adjustment.create', Create<Adjustment>> | Mutation<'budget.create', Create<Budget>> | Mutation<'budget.update', Update<Budget>> | Mutation<'budget.delete', Revision>
   | Mutation<'activity.read', { id: string }> | Mutation<'settings.update', Ledger['settings']> | Mutation<'data.clear', { confirmation: 'XÓA' }>
-  | Mutation<'spending.meal.upsert', { meal: MealOption }> | Mutation<'spending.meal.delete', { id: string }> | Mutation<'spending.preferences.set', { preferences: Preferences }> | Mutation<'spending.plan.upsert', { plan: SpendingPlan; expectedVersion: number | null }> | Mutation<'spending.plan.delete', Revision>
+  | Mutation<'spending.meal.upsert', { meal: MealOption }> | Mutation<'spending.meal.delete', { id: string }> | Mutation<'spending.preferences.set', { preferences: Preferences }> | Mutation<'spending.plan.upsert', { plan: SpendingPlan; expectedVersion: number | null }> | Mutation<'spending.roadmap.upsert', { catalog: MealOption[]; plan: SpendingPlan; expectedVersion: number | null }> | Mutation<'spending.plan.delete', Revision>
   | Mutation<'import.receive', Pick<ImportedEvent, 'id' | 'source' | 'provider' | 'sourceId' | 'text' | 'receivedAt'>> | Mutation<'import.process', Revision> | Mutation<'import.reparse', Revision & { text: string; warnings: string[] }> | Mutation<'import.ignore', Revision> | Mutation<'import.confirm', Revision & { entry: ImportEntry }>;
 export class DomainError extends Error {
   code: string; field?: string;
@@ -251,7 +251,7 @@ export function applyCommand(state: Ledger, command: Command, context: { now: st
     'transaction.create': ['id', 'walletId', 'categoryId', 'kind', 'amount', 'occurredAt', 'note', 'tagIds'], 'transaction.update': ['id', 'walletId', 'categoryId', 'kind', 'amount', 'occurredAt', 'note', 'tagIds', 'expectedVersion'], 'transaction.delete': ['id', 'expectedVersion'],
     'transfer.create': ['id', 'fromWalletId', 'toWalletId', 'amount', 'occurredAt', 'note'], 'transfer.update': ['id', 'fromWalletId', 'toWalletId', 'amount', 'occurredAt', 'note', 'expectedVersion'], 'transfer.delete': ['id', 'expectedVersion'],
     'adjustment.create': ['id', 'walletId', 'amount', 'occurredAt', 'note'], 'budget.create': ['id', 'name', 'limit', 'start', 'endExclusive', 'walletIds', 'categoryIds'], 'budget.update': ['id', 'name', 'limit', 'start', 'endExclusive', 'walletIds', 'categoryIds', 'expectedVersion'], 'budget.delete': ['id', 'expectedVersion'],
-    'spending.meal.upsert': ['meal'], 'spending.meal.delete': ['id'], 'spending.preferences.set': ['preferences'], 'spending.plan.upsert': ['plan', 'expectedVersion'], 'spending.plan.delete': ['id', 'expectedVersion'],
+    'spending.meal.upsert': ['meal'], 'spending.meal.delete': ['id'], 'spending.preferences.set': ['preferences'], 'spending.plan.upsert': ['plan', 'expectedVersion'], 'spending.roadmap.upsert': ['catalog', 'plan', 'expectedVersion'], 'spending.plan.delete': ['id', 'expectedVersion'],
     'activity.read': ['id'], 'settings.update': ['timezone', 'onboarded'], 'data.clear': ['confirmation'],
     'import.receive': ['id', 'source', 'provider', 'sourceId', 'text', 'receivedAt'], 'import.process': ['id', 'expectedVersion'], 'import.reparse': ['id', 'expectedVersion', 'text', 'warnings'], 'import.ignore': ['id', 'expectedVersion'], 'import.confirm': ['id', 'expectedVersion', 'entry']
   };
@@ -268,6 +268,19 @@ export function applyCommand(state: Ledger, command: Command, context: { now: st
     const meal = find(s.spending.catalog, command.payload.id); s.spending.catalog.splice(s.spending.catalog.indexOf(meal), 1);
   } else if (command.type === 'spending.preferences.set') {
     validatePreferences(command.payload.preferences, s.spending.catalog); s.spending.preferences = command.payload.preferences;
+  } else if (command.type === 'spending.roadmap.upsert') {
+    const { catalog, plan, expectedVersion } = command.payload;
+    if (!Array.isArray(catalog) || catalog.length > 100 || new Set(catalog.map(m => m.id)).size !== catalog.length) fail('INVALID_SPENDING', 'Thực đơn nguồn quá lớn hoặc có mã trùng.');
+    catalog.forEach(validateMeal);
+    if (plan.preferences.excludedAllergens.length) fail('INVALID_SPENDING', 'Nguồn chưa xác nhận nguyên liệu hoặc dị ứng.');
+    const merged = new Map(s.spending.catalog.map(m => [m.id, m])); for (const meal of catalog) merged.set(meal.id, meal);
+    if (merged.size > 100) fail('INVALID_SPENDING', 'Danh mục đã đủ 100 món. Không thay đổi dữ liệu đã lưu.');
+    s.spending.catalog = [...merged.values()];
+    const old = s.spending.plans.find(x => x.config.id === plan.config.id);
+    if (expectedVersion !== null) revision(expectedVersion);
+    if ((old?.version ?? null) !== expectedVersion) fail('STALE', 'Kế hoạch đã thay đổi. Mở lại và tính lại đề xuất.');
+    validatePlanSave(s, plan, context.now, old);
+    const saved = { ...plan, version: (old?.version ?? 0) + 1 }; if (old) s.spending.plans[s.spending.plans.indexOf(old)] = saved; else s.spending.plans.push(saved);
   } else if (command.type === 'spending.plan.upsert') {
     const { plan, expectedVersion } = command.payload; const old = s.spending.plans.find(x => x.config.id === plan.config.id);
     if (expectedVersion !== null) revision(expectedVersion);

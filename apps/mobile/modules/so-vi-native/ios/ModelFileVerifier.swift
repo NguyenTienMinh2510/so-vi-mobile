@@ -2,8 +2,8 @@ import Foundation
 import CryptoKit
 
 enum ModelFileVerifier {
-  static let byteCount: UInt64 = 1_568_476_256
-  static let checksum = "3f50d5f830873c22d33558f69eb2c34aa59858f37e7a58a982aae88bb38ebe88"
+  static let byteCount: UInt64 = 3_443_763_168
+  static let checksum = "21c4643259ce62ffd979848e5819ce03823fd9e9902279ab54cc0d572d83d33e"
   static func directory() throws -> URL {
     let fm = FileManager.default
     // iOS may alias the platform-owned /var ancestor; app-owned children may never be symlinks.
@@ -38,7 +38,7 @@ enum ModelFileVerifier {
     let fileURL = root.appendingPathComponent(url.lastPathComponent)
     guard url.resolvingSymlinksInPath().standardizedFileURL.path == fileURL.path else { throw error("Không dùng liên kết ngoài vùng mô hình riêng.") }
     let attributes = try fm.attributesOfItem(atPath: fileURL.path)
-    guard attributes[.type] as? FileAttributeType == .typeRegular, (attributes[.size] as? NSNumber)?.uint64Value == byteCount else { throw error("File mô hình sai dung lượng. Chọn đúng Qwen3.5-2B Q5_K_M hoặc tải lại.") }
+    guard attributes[.type] as? FileAttributeType == .typeRegular, (attributes[.size] as? NSNumber)?.uint64Value == byteCount else { throw error("File mô hình sai dung lượng. Chọn đúng Qwen3.5-4B Q5_K_M hoặc tải lại.") }
     let file = try FileHandle(forReadingFrom: fileURL)
     defer { try? file.close() }
     var hash = SHA256()

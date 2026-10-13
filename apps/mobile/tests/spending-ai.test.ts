@@ -22,7 +22,7 @@ function harness(native = true) {
     if (name === 'expo-constants') return { default: { executionEnvironment: native ? 'standalone' : 'storeClient' }, ExecutionEnvironment: { StoreClient: 'storeClient' } };
     if (name === 'react-native') return { AppState: appState, Platform: { OS: 'ios' } };
     if (name === 'expo-file-system/legacy') return fs;
-    if (name === 'expo-document-picker') return { getDocumentAsync: async () => ({ canceled: false, assets: [{ uri: 'file:///picked/model.gguf', size: 1568476256 }] }) };
+    if (name === 'expo-document-picker') return { getDocumentAsync: async () => ({ canceled: false, assets: [{ uri: 'file:///picked/model.gguf', size: 3443763168 }] }) };
     if (name === './spending') return { parseAiPreferences };
     if (name === 'llama.rn') return { initLlama: async () => { calls.push('load'); if (pauseLoad) return new Promise(resolve => { resolveLoad = resolve; }); return context; } };
     throw new Error(`Unexpected module: ${name}`);
