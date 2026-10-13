@@ -24,14 +24,20 @@ struct ModelMemoryCheck {
     try autoreleasepool {
       do { _ = try ModelFileVerifier.verify(candidate.absoluteString) }
       catch {
-        guard error.localizedDescription.contains("Mã xác minh mô hình không khớp") else { throw error }
+        guard error.localizedDescription.contains("Mã xác minh mô hình không khớp") else {
+          FileHandle.standardError.write(Data("MODEL_NATIVE_ERROR: \(error.localizedDescription)\n".utf8))
+          throw error
+        }
         rejected = true
       }
     }
     let growth = peakRSS() - before
-    print("MODEL_MEMORY bytes=\(ModelFileVerifier.byteCount) peakGrowthBytes=\(growth) checksumRejected=\(rejected)")
+    FileHandle.standardError.write(Data("MODEL_MEMORY bytes=\(ModelFileVerifier.byteCount) peakGrowthBytes=\(growth) checksumRejected=\(rejected)\n".utf8))
     precondition(rejected, "Full-size corrupt fixture must never be accepted")
-    precondition(growth < 128 * 1_048_576, "Model hash memory grows with file size")
+    if growth >= 128 * 1_048_576 {
+      FileHandle.standardError.write(Data("FAIL: Model hash memory grows with file size\n".utf8))
+      exit(EXIT_FAILURE)
+    }
     precondition(!FileManager.default.fileExists(atPath: root.appendingPathComponent("model.gguf").path))
     print("PASS: actual full-size native verifier checksum guard and bounded memory")
   }
