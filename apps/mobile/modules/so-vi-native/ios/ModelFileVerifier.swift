@@ -43,11 +43,13 @@ enum ModelFileVerifier {
     defer { try? file.close() }
     var hash = SHA256()
     var total: UInt64 = 0
-    while let data = try file.read(upToCount: 1_048_576), !data.isEmpty {
+    while try autoreleasepool(invoking: {
+      guard let data = try file.read(upToCount: 1_048_576), !data.isEmpty else { return false }
       total += UInt64(data.count)
       guard total <= byteCount else { throw error("File mô hình đã thay đổi khi kiểm tra.") }
       hash.update(data: data)
-    }
+      return true
+    }) { }
     guard total == byteCount, hash.finalize().map({ String(format: "%02x", $0) }).joined() == checksum else { throw error("Mã xác minh mô hình không khớp. File được giữ ngoài trạng thái sẵn sàng; tải lại hoặc nhập đúng file.") }
     return true
   }
