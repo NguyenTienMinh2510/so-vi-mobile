@@ -3,10 +3,22 @@ import { validatePreferences, type MealOption, type Preferences } from './spendi
 
 export const normalizeRoadmapText = (value: string) => value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/\s+/g, ' ').trim();
 export function assertRoadmapArea(area: string) {
-  const text = normalizeRoadmapText(area);
-  const districts = [...text.matchAll(/(?:quan|q\.?|district)\s*(\d+)/g)];
-  if (districts.some(m => Number(m[1]) !== 10) || /ha noi|hanoi|da nang|da lat|hai phong|hue\b|nha trang|vung tau|bien hoa|binh duong|dong nai|can tho|thu duc|binh thanh|tan binh|tan phu|phu nhuan|go vap|binh tan|huyen|district\s*[^\d\s]/.test(text)) throw new Error('Nguồn miễn phí hiện chỉ hỗ trợ Quận 10, TP.HCM.');
-  if (/\b(?:tp|thanh pho|city)\b/.test(text) && !/ho chi minh|hcm|sai gon/.test(text)) throw new Error('Nguồn miễn phí hiện chỉ hỗ trợ Quận 10, TP.HCM.');
+  if (typeof area !== 'string' || !area.trim() || area.length > 200 || !/[a-z]/.test(normalizeRoadmapText(area)) || /[<>\/\\?=]|https?:|\b(?:api|javascript)\b/i.test(area)) throw new Error('Ghi rõ khu vực ở Việt Nam, ví dụ Quận 1, TP.HCM hoặc Ninh Kiều, Cần Thơ.');
+}
+export function normalizeRoadmapArea(area: string) { return normalizeRoadmapText(area).replace(/\b(?:tp\.?\s*hcm|tphcm|hcm|sai gon)\b/g, 'ho chi minh').replace(/\bhanoi\b/g, 'ha noi').replace(/\b(?:q\.?|district)\s*(\d+)\b/g, 'quan $1').replace(/\b(?:thanh pho|tp|tinh|viet nam|vietnam|khu vuc|tai|o)\b\.?/g, ' ').replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim(); }
+export function roadmapAreaMatches(area: string, address: string) {
+  const actual = address.split(/[,;]/).map(part => ({ phrase: normalizeRoadmapArea(part), administrative: /^(?:quan|q\.?|district|phuong|huyen|thi xa|thanh pho|tp\.?|tinh)\b/.test(normalizeRoadmapText(part)) }));
+  const requested = area.split(/[,;]/).map(normalizeRoadmapArea).filter(Boolean);
+  return requested.length > 0 && requested.every(phrase => actual.some(part => part.phrase === phrase || (part.administrative && new RegExp(`(?:^| )${phrase}(?: |$)`).test(part.phrase))));
+}
+function promptClauses(text: string) {
+  const clauses: string[] = []; let start = 0;
+  for (let i = 0; i < text.length; i++) if (text[i] === ',' || text[i] === ';') {
+    const before = normalizeRoadmapText(text.slice(start, i)), after = normalizeRoadmapText(text.slice(i + 1));
+    if (text[i] === ',' && /^(?:(?:ngan sach|du phong)\s*[:=]?\s*)?\d+(?:,\d+)*$/.test(before) && /^\d+(?:,\d+)*\s*(?:trieu|nghin|ngan|vnd|dong|tr|k|d)\b/.test(after)) continue;
+    clauses.push(text.slice(start, i).trim()); start = i + 1;
+  }
+  clauses.push(text.slice(start).trim()); return clauses.filter(Boolean);
 }
 function amount(value: string, unit: string): string {
   const factor = /^(tr|trieu)$/.test(unit) ? 1000000n : /^(k|nghin|ngan)$/.test(unit) ? 1000n : 1n;
@@ -29,10 +41,12 @@ function assertFrequencyPeriods(text: string) {
 }
 export function parseRoadmapPrompt(text: string, today: string) {
   if (typeof text !== 'string' || !text.trim() || text.length > 1000) throw new Error('Mô tả roadmap từ 1 đến 1.000 ký tự.');
-  timestamp(`${today}T00:00:00.000Z`); assertRoadmapArea(text);
-  const normalized = normalizeRoadmapText(text);
+  timestamp(`${today}T00:00:00.000Z`);
+  const clauses = promptClauses(text), normalized = clauses.map(normalizeRoadmapText).join(', ');
   assertFrequencyPeriods(text);
-  if (!/(?:quan|q\.?|district)\s*10\b/.test(normalized)) throw new Error('Ghi rõ Quận 10 trong mô tả; nguồn miễn phí hiện chỉ hỗ trợ khu vực này.');
+  const areaParts = clauses.filter(part => !/\d+\s*(?:ngay|bua)|\d{4}-\d{2}-\d{2}|ngan sach|du phong|\d\s*(?:k|tr|trieu|nghin|ngan|vnd|dong|d)\b|thich|uu tien|khong|bo mon|loai tru|chi an|di ung|kieng|it nhat|toi da|dung\s*\d|bat buoc|tranh|han che|nguyen lieu|chay|vegan|halal|gluten|lactose/.test(normalizeRoadmapText(part)));
+  let area = areaParts.join(', '); assertRoadmapArea(area);
+  if (/^(?:quan|q\.?)\s*10$/i.test(normalizeRoadmapText(area))) area = 'Quận 10, TP.HCM';
   const financeText = normalized.replace(/\d{4}-\d{2}-\d{2}/g, '');
   if (/[+-]\s*\d/.test(financeText) || [...financeText.matchAll(/\d+(?:[.,]\d+)*\s*([a-z]+)/g)].some(m => /^(?:k|tr|vnd|nghin|ngan)/.test(m[1]) && !/^(?:k|tr|trieu|vnd|nghin|ngan)$/.test(m[1]))) throw new Error('Số tiền có dấu hoặc đơn vị không rõ.');
   const dates = [...normalized.matchAll(/\d{4}-\d{2}-\d{2}/g)];
@@ -43,7 +57,7 @@ export function parseRoadmapPrompt(text: string, today: string) {
   if (duration.length > 1 || meals.length > 1) throw new Error('Số ngày hoặc số bữa đang có nhiều lựa chọn.');
   const days = Number(duration[0]?.[1] ?? 7), mealsPerDay = Number(meals[0]?.[1] ?? 3);
   if (days < 1 || days > 31 || mealsPerDay < 1 || mealsPerDay > 3) throw new Error('Chọn 1–31 ngày và 1–3 bữa/ngày.');
-  let rest = normalized.replace(/\d{4}-\d{2}-\d{2}/g, '').replace(/\d+\s*ngay\b/g, (value, offset: number, original: string) => /(?:moi|mot|trong|hang|\/)\s*$/.test(original.slice(0, offset)) ? value : '').replace(/\d+\s*bua\s*(?:\/\s*ngay|moi ngay|mot ngay)/g, '');
+  let rest = clauses.filter(part => !areaParts.includes(part)).map(normalizeRoadmapText).join(', ').replace(/\d{4}-\d{2}-\d{2}/g, '').replace(/\d+\s*ngay\b/g, (value, offset: number, original: string) => /(?:moi|mot|trong|hang|\/)\s*$/.test(original.slice(0, offset)) ? value : '').replace(/\d+\s*bua\s*(?:\/\s*ngay|moi ngay|mot ngay)/g, '');
   const matches = [...rest.matchAll(/(?:ngan sach\s*[:=]?\s*|du phong\s*[:=]?\s*)?[+-]?\d+(?:[., ]\d+)*\s*(?:trieu|nghin|ngan|vnd|dong|tr|k|đ|d(?=\s|,|$))?/g)].filter(m => /ngan sach|du phong|trieu|nghin|ngan|vnd|dong|tr|k|đ|\d\s*d(?:\s|,|$)/.test(m[0]));
   let budget: string | undefined, reserve = '0'; let reserves = 0;
   for (const match of matches) {
@@ -60,11 +74,11 @@ export function parseRoadmapPrompt(text: string, today: string) {
   if (!budget || money(budget, { positive: true }) <= money(reserve)) throw new Error('Nhập ngân sách lớn hơn dự phòng, ví dụ 900k.');
   const endDay = new Date(Date.parse(`${startDay}T00:00:00.000Z`) + (days - 1) * 86400000).toISOString().slice(0, 10);
   timestamp(`${endDay}T00:00:00.000Z`);
-  const preferenceText = text.replace(/\d{4}-\d{2}-\d{2}|\d+\s*bữa\s*(?:\/\s*ngày|mỗi ngày|một ngày)/gi, '').replace(/\d+\s*ngày\b/gi, (value, offset: number, original: string) => /(?:moi|mot|trong|hang|\/)\s*$/.test(normalizeRoadmapText(original.slice(0, offset))) ? value : '')
-    .replace(/(?:ngân sách|dự phòng)\s*[:=]?\s*\d+(?:[., ]\d+)*\s*(?:triệu|nghìn|ngàn|VND|đồng|tr|k|đ)?/gi, '')
-    .replace(/(?:(?:ngân sách|dự phòng)\s*[:=]?\s*)?\d+(?:[., ]\d+)*\s*(?:triệu|nghìn|ngàn|VND|đồng|tr|k|đ)(?=\s|[,;.]|$)/gi, '')
-    .replace(/(?:Quận|q\.?|district)\s*10\b|(?:thành phố|TP\.?)?\s*Hồ Chí Minh|TP\.?\s*HCM|HCM|Sài Gòn|bắt đầu|từ ngày/gi, '').replace(/^[\s,;:.]+|[\s,;:.]+$/g, '').trim();
-  return { area: 'Quận 10, TP.HCM', days, budget, reserve, mealsPerDay, startDay, endDay, preferenceText };
+  const preferenceText = clauses.filter(part => {
+    const value = normalizeRoadmapText(part);
+    return !areaParts.includes(part) && !matches.some(match => match[0].trim() === value) && !/^\d+\s*ngay$|^\d+\s*bua\s*(?:\/\s*ngay|moi ngay|mot ngay)$|^(?:(?:bat dau|tu ngay)\s*)?\d{4}-\d{2}-\d{2}$/.test(value);
+  }).join(', ');
+  return { area, days, budget, reserve, mealsPerDay, startDay, endDay, preferenceText };
 }
 export function assertRoadmapFoodSafety(text: string, preferences?: Preferences) {
   if (/di ung|allerg|nguyen lieu|thanh phan|an toan|khong (?:co|chua)|khong dung|kieng|chay|vegan|vegetarian|gluten|lactose|halal/.test(normalizeRoadmapText(text)) || preferences?.excludedAllergens.length) throw new Error('Nguồn chưa xác nhận nguyên liệu hoặc dị ứng. Không thể lập roadmap an toàn theo điều kiện này.');

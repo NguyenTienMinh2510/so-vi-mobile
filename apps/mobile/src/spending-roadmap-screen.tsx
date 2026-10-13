@@ -9,6 +9,7 @@ import { Button, Card, Choice, Icon, Page, colors, styles, toggle } from './ui';
 import { planSpending, protectedSlot, replaceMeal, spendingTotals, validatePlanSave, type MealOption, type MealSlot, type PlanConfig, type Preferences, type SpendingPlan } from './spending';
 import { SPENDING_MODEL, spendingAi, spendingAiAvailable, type AiState } from './spending-ai';
 import { loadOnlineMeals } from './spending-sources';
+import type { OsmVenue } from './spending-osm';
 import { assertRoadmapFoodSafety, normalizeRoadmapText, parseRoadmapPrompt, reviewRoadmapPreferences, roadmapAiCatalog, roadmapAiAliases, restoreRoadmapAiPreferences } from './spending-roadmap';
 import { Field } from './ui';
 
@@ -28,11 +29,15 @@ export function RoadmapScreen() {
   const [scope, setScope] = useState<{ walletIds: string[]; categoryIds: string[]; fixed: PlanConfig['fixed'] }>({ walletIds: [], categoryIds: [], fixed: [] });
   const [view, setView] = useState('day'), [selectedDay, setSelectedDay] = useState(''), [week, setWeek] = useState(0), [detail, setDetail] = useState(''), [swap, setSwap] = useState('');
   const [ai, setAi] = useState<AiState>(spendingAi.state), [busy, setBusy] = useState(''), [error, setError] = useState(''), [dirty, setDirty] = useState(false);
+  const [waiting, setWaiting] = useState<{ step: number; started: number; usesAi: boolean } | null>(null), [elapsed, setElapsed] = useState(0);
+  const [discovery, setDiscovery] = useState<{ venues: OsmVenue[]; pricedSources: string[]; warnings: string[] } | null>(null), [venuesOpen, setVenuesOpen] = useState(false);
+  const elapsedTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const mounted = useRef(true), generation = useRef(0), active = useRef(false), controller = useRef<AbortController | null>(null);
   const pinned = useRef<string | null>(null);
   const aiBusy = !['ready', 'missing', 'error'].includes(ai.phase);
   const aiPhase = ({ missing: 'Chưa có mô hình', checking: 'Đang xác minh', downloading: 'Đang tải', importing: 'Đang nhập', ready: 'Sẵn sàng', loading: 'Đang nạp AI', inferring: 'Đang hiểu sở thích', stopping: 'Đang dừng', error: 'Chưa sẵn sàng' })[ai.phase];
-  const cancel = () => { generation.current++; controller.current?.abort(); void spendingAi.cancel(); };
+  const stopElapsed = () => { if (elapsedTimer.current !== null) { clearInterval(elapsedTimer.current); elapsedTimer.current = null; } };
+  const cancel = () => { generation.current++; controller.current?.abort(); stopElapsed(); if (mounted.current) { setWaiting(null); if (active.current) setBusy('Đang dừng thao tác…'); } void spendingAi.cancel(); };
   const edit = () => { try { latest.current.lock.assertUnlocked(); if (latest.current.lock.locked || latest.current.lock.covered || AppState.currentState !== 'active') throw new Error('Mở khóa ứng dụng trước khi sửa.'); } catch (e) { setError(errorMessage(e)); return false; } cancel(); setDirty(true); setError(''); return true; };
   const updateDraft = (next: Draft) => { draftRef.current = next; setDraft(next); };
   useEffect(() => {
@@ -41,6 +46,7 @@ export function RoadmapScreen() {
     return () => { mounted.current = false; cancel(); unsubscribe(); listener.remove(); };
   }, []);
   useEffect(() => { if (lock.locked || lock.covered) cancel(); }, [lock.locked, lock.covered]);
+  useEffect(() => { stopElapsed(); if (waiting) { const started = waiting.started; elapsedTimer.current = setInterval(() => { if (mounted.current) setElapsed(Math.max(0, Math.floor((Date.now() - started) / 1000))); }, 1000); } return stopElapsed; }, [waiting?.started]);
   usePreventRemove(dirty || !!busy || aiBusy, ({ data }) => {
     if (busy || aiBusy) { Alert.alert('Đang xử lý', 'Hủy thao tác hoặc chờ lưu xong. Bản nháp được giữ.'); return; }
     Alert.alert('Bỏ bản nháp?', 'Roadmap chưa lưu sẽ bị bỏ.', [{ text: 'Tiếp tục sửa', style: 'cancel' }, { text: 'Bỏ bản nháp', style: 'destructive', onPress: () => { try { latest.current.lock.assertUnlocked(); navigation.dispatch(data.action); } catch (e) { setError(errorMessage(e)); } } }]);
@@ -54,24 +60,29 @@ export function RoadmapScreen() {
     if (active.current || aiBusy) return; active.current = true; const request = ++generation.current; setBusy(label); setError('');
     try { check(request); await work(request); }
     catch (e) { if (mounted.current && request === generation.current) setError(errorMessage(e)); }
-    finally { active.current = false; controller.current = null; if (mounted.current) setBusy(''); }
+    finally { active.current = false; controller.current = null; stopElapsed(); if (mounted.current) { setBusy(''); setWaiting(null); } }
   };
   const stateFor = (catalog: MealOption[]) => ({ ...latest.current.store.ledger, spending: { ...latest.current.store.ledger.spending, catalog: [...new Map([...latest.current.store.ledger.spending.catalog, ...catalog].map(m => [m.id, m])).values()] } });
   const guardVersion = (value: Draft | null) => { if (value?.expectedVersion !== null && value && latest.current.store.ledger.spending.plans.find(p => p.config.id === value.plan.config.id)?.version !== value.expectedVersion) throw new Error('Bản đã lưu đã thay đổi. Mở lại trước khi sửa.'); };
   const create = (withoutAi: boolean) => void operation('Đọc món và giá online…', async request => {
     const current = latest.current.store, revision = current.revision, input = textRef.current, parsed = parseRoadmapPrompt(input, localDateKey(new Date().toISOString(), current.ledger.settings.timezone));
-    assertRoadmapFoodSafety(parsed.preferenceText); guardVersion(draftRef.current);
+    assertRoadmapFoodSafety(input); guardVersion(draftRef.current);
+    const usesAi = !withoutAi && !!parsed.preferenceText.trim();
+    const started = Date.now();
     if (withoutAi && /khong|chi an|bat buoc|tranh|han che|tuan|lan|it nhat|toi da|dung\s*\d/.test(normalizeRoadmapText(parsed.preferenceText))) throw new Error('Bộ tính chưa duyệt được điều kiện ăn bắt buộc. Dùng AI local hoặc sửa mô tả chỉ gồm kỳ và ngân sách.');
-    if (!withoutAi && !spendingAiAvailable) { setModelOpen(true); throw new Error('AI local cần bản Sổ Ví trên iPhone. Có thể chọn rõ “Tạo bằng bộ tính” với mô tả không có điều kiện ăn bắt buộc.'); }
-    if (!withoutAi && spendingAi.state.phase !== 'ready') {
-      setBusy('Kiểm tra AI local…');
-      try { const ready = await spendingAi.checkModel(); check(request, revision); if (!ready) throw new Error('Chưa có mô hình AI local. Tải hoặc nhập file trong phần thiết lập; bộ tính là lựa chọn riêng.'); }
-      catch (e) { check(request, revision); setModelOpen(true); throw e; }
-      setBusy('Đọc món và giá online…');
-    }
+    setElapsed(0); setWaiting({ step: 0, started, usesAi });
     controller.current = new AbortController(); const source = await loadOnlineMeals(parsed.area, controller.current.signal); check(request, revision);
+    setDiscovery({ venues: source.venues ?? [], pricedSources: [...new Set(source.meals.map(meal => meal.priceSource))], warnings: source.warnings }); setVenuesOpen(!source.meals.length);
+    if (!source.meals.length) throw new Error(source.venues?.length ? `Tìm thấy ${source.venues.length} quán; chưa xác minh giá món. Xem thực đơn hoặc thử khu vực khác.` : 'Chưa có quán trong dữ liệu khu vực này. Ghi rõ quận/huyện và tỉnh/thành phố rồi thử lại.');
+    setWaiting(value => value ? { ...value, step: 1 } : value);
+    if (usesAi && !spendingAiAvailable) { setModelOpen(true); throw new Error('Đã đọc nguồn giá. AI local cần bản Sổ Ví trên iPhone để hiểu sở thích; có thể dùng bộ tính với mô tả không có điều kiện ăn bắt buộc.'); }
+    if (usesAi && spendingAi.state.phase !== 'ready') {
+      setBusy('Kiểm tra AI local…');
+      try { const ready = await spendingAi.checkModel(); check(request, revision); if (!ready) throw new Error('Chưa có mô hình AI local. Tải hoặc nhập file trong phần thiết lập; quán tìm được vẫn được giữ.'); }
+      catch (e) { check(request, revision); setModelOpen(true); throw e; }
+    }
     const catalog = source.meals; let preferences = emptyPreferences();
-    if (!withoutAi) {
+    if (usesAi) {
       setBusy('AI local đọc sở thích…');
       const preferenceText = parsed.preferenceText || 'Không có sở thích hoặc tần suất. Trả về các danh sách rỗng.';
       const aiCatalog = roadmapAiCatalog(parsed.preferenceText, catalog);
@@ -85,10 +96,10 @@ export function RoadmapScreen() {
       }
       preferences.likedIds = [...new Set(preferences.likedIds)];
     }
-    check(request, revision); setBusy('Tính ngân sách chính xác…');
+    check(request, revision); setBusy('Tính ngân sách chính xác…'); setWaiting(value => value ? { ...value, step: 2 } : value);
     const old = draftRef.current; const config: PlanConfig = { id: old?.plan.config.id ?? newId(), name: parsed.area, startDay: parsed.startDay, endDay: parsed.endDay, timezone: current.ledger.settings.timezone, budget: parsed.budget, reserve: parsed.reserve, mealsPerDay: parsed.mealsPerDay, allowCooking: false, ...copy(scope), fixed: scope.fixed.map(f => ({ ...f, amount: parseMoneyInput(f.amount) })) };
     const plan = planSpending(stateFor(catalog), config, catalog, preferences, new Date().toISOString(), old?.plan);
-    check(request, revision); updateDraft({ plan, catalog, revision, expectedVersion: old?.expectedVersion ?? null, mode: withoutAi ? 'math' : 'ai', warnings: source.warnings, text: input });
+    check(request, revision); updateDraft({ plan, catalog, revision, expectedVersion: old?.expectedVersion ?? null, mode: usesAi ? 'ai' : 'math', warnings: source.warnings, text: input });
     setSelectedDay(plan.config.startDay); setWeek(0); setDetail(''); setSwap(''); pinned.current = null; setPromptOpen(false); setDirty(true);
   });
   const save = () => void operation('Đang lưu roadmap…', async request => {
@@ -111,6 +122,7 @@ export function RoadmapScreen() {
     const catalog = [...new Map([...plan.meals.map(m => m.meal), ...store.ledger.spending.catalog.filter(m => /^online-/.test(m.id))].map(m => [m.id, m])).values()];
     updateDraft({ plan: copy(plan), catalog, revision: latest.current.store.revision, expectedVersion: plan.version!, mode: 'saved', warnings: ['Ảnh chụp đã lưu, có thể cũ. Chưa đọc lại giá online.'], text: input });
     setSelectedDay(plan.config.startDay); setWeek(0); setPromptOpen(false); setDirty(false); setDetail(''); setSwap(''); setError(''); pinned.current = null;
+    setDiscovery(null); setVenuesOpen(false);
   };
   const openGuarded = (plan: SpendingPlan) => { if (busy || aiBusy) return; if (!dirty) { try { open(plan); } catch (e) { setError(errorMessage(e)); } return; } Alert.alert('Mở roadmap đã lưu?', 'Bản nháp đang sửa sẽ bị bỏ.', [{ text: 'Giữ bản nháp', style: 'cancel' }, { text: 'Mở', onPress: () => { try { open(plan); } catch (e) { setError(errorMessage(e)); } } }]); };
   const changePlan = (plan: SpendingPlan, recomputedRevision?: number) => { try { const value = draftRef.current; if (!value) return; latest.current.lock.assertUnlocked(); if (latest.current.lock.locked || latest.current.lock.covered || AppState.currentState !== 'active') throw new Error('Mở khóa ứng dụng trước khi sửa.'); guardVersion(value); if ((recomputedRevision ?? value.revision) !== latest.current.store.revision) throw new Error('Sổ đã thay đổi. Cân lại ngân sách hoặc tạo lại trước khi đổi bữa.'); assertRoadmapFoodSafety(value.text, plan.preferences); if (!edit()) return; updateDraft({ ...value, plan, revision: recomputedRevision ?? value.revision }); } catch (e) { setError(errorMessage(e)); } };
@@ -138,20 +150,34 @@ export function RoadmapScreen() {
   let barSpace = 100;
   const budgetSegments = plan && totals ? [{ amount: totals.spent, color: colors.income }, { amount: totals.planned, color: colors.transfer }, { amount: totals.fixedUnpaid, color: colors.warning }, { amount: plan.config.reserve, color: '#A78BFA' }, { amount: totals.remaining, color: colors.accent }].map(segment => { const width = Math.min(barSpace, Math.max(0, Number(BigInt(segment.amount) * 10000n / BigInt(plan.config.budget)) / 100)); barSpace -= width; return { ...segment, width }; }) : [];
   const setScopeField = <K extends keyof typeof scope>(field: K, value: typeof scope[K]) => { if (!edit()) return; setScope(s => ({ ...s, [field]: value })); if (draftRef.current) updateDraft({ ...draftRef.current, text: '' }); };
+  const venuePanel = discovery && <>
+      <Pressable accessibilityRole="button" accessibilityLabel={`Quán trong khu vực (${discovery.venues.length})`} accessibilityState={{ expanded: venuesOpen }} style={[styles.row, { minHeight: 44, paddingVertical: 8 }]} onPress={() => setVenuesOpen(value => !value)}><Icon name="restaurant-outline" /><Text style={[styles.secondary, { flex: 1 }]}>Quán trong khu vực ({discovery.venues.length})</Text><Icon name={venuesOpen ? 'chevron-up' : 'chevron-down'} /></Pressable>
+      {venuesOpen && <View style={{ gap: 12 }}>
+        {!discovery.venues.length && <Text style={styles.secondary}>Chưa có quán trong dữ liệu khu vực đã tìm.</Text>}
+        {discovery.venues.slice(0, 5).map(venue => <View key={venue.id} style={{ gap: 8, paddingVertical: 8, borderTopWidth: 1, borderTopColor: colors.border }}><Text selectable style={styles.heading}>{venue.name}</Text><Text selectable style={styles.secondary}>{venue.address || `${venue.lat.toFixed(5)}, ${venue.lon.toFixed(5)}`}</Text><Text style={styles.advisory}>{venue.menuUrl && discovery.pricedSources.includes(venue.menuUrl) ? 'Có giá món từ thực đơn đã xác minh' : 'Chưa có giá món'}</Text><View style={styles.pair}><View style={styles.half}><Button title="Nguồn OpenStreetMap" accessibilityLabel={`Nguồn OpenStreetMap · ${venue.name}`} secondary onPress={() => void openLink(venue.url)} /></View>{(venue.menuUrl || venue.website) && <View style={styles.half}><Button title={venue.menuUrl ? 'Mở thực đơn' : 'Mở website'} accessibilityLabel={venue.menuUrl ? `Mở thực đơn · ${venue.name}` : `Mở website · ${venue.name}`} secondary onPress={() => void openLink((venue.menuUrl || venue.website)!)} /></View>}</View></View>)}
+        {discovery.venues.length > 5 && <Text style={styles.helper}>Hiển thị 5 trong {discovery.venues.length} quán tìm được.</Text>}
+        {discovery.warnings.map(warning => <Text key={warning} style={styles.helper}>{warning}</Text>)}
+      </View>}
+      <Pressable accessibilityRole="link" accessibilityLabel="Bản quyền OpenStreetMap contributors, giấy phép ODbL" onPress={() => void openLink('https://www.openstreetmap.org/copyright')} style={{ minHeight: 44, justifyContent: 'center' }}><Text style={styles.helper}>© OpenStreetMap contributors · ODbL</Text></Pressable>
+    </>;
   return <Page title="Roadmap ăn uống" back>
+    {!!busy && <>
+      {waiting ? <Card><Text style={styles.heading}>Đang tạo roadmap</Text><Text accessibilityLiveRegion="polite" style={styles.text}>{busy}</Text><Text accessibilityLiveRegion="none" style={[styles.secondary, { fontVariant: ['tabular-nums'] }]}>Đã chờ {elapsed} giây</Text>{['Tìm quán và giá', waiting.usesAi ? 'Lên lịch · AI local hiểu sở thích' : 'Lên lịch · bộ tính', 'Kiểm tra ngân sách'].map((label, index) => { const status = index < waiting.step ? 'Đã xong' : index === waiting.step ? 'Đang xử lý' : 'Chờ bước trước'; return <View key={label} accessibilityLabel={`${label}: ${status}`} style={styles.row}><Icon name={index < waiting.step ? 'checkmark-circle-outline' : index === waiting.step ? 'time-outline' : 'ellipse-outline'} color={index === waiting.step ? colors.accent : colors.secondary} /><View style={{ flex: 1 }}><Text style={styles.text}>{label}</Text><Text style={styles.secondary}>{status}</Text></View></View>; })}<Text style={styles.helper}>Thời gian phụ thuộc nguồn và mô hình trên máy. Hủy sẽ giữ mô tả và roadmap trước đó.</Text></Card> : <Text accessibilityLiveRegion="polite" style={styles.text}>{busy}</Text>}
+      <Button title="Hủy thao tác" secondary disabled={busy === 'Đang lưu roadmap…'} onPress={cancel} />
+    </>}
     {(!draft || promptOpen) ? <Card>
       <Text style={styles.heading}>Ăn gì, trong ngân sách của bạn</Text>
-      <Field label="Mô tả roadmap" multiline value={text} maxLength={1000} placeholder="Quận 10, 7 ngày, 900k, 3 bữa/ngày" onChangeText={value => { if (!edit()) return; textRef.current = value; setText(value); }} />
+      <Field label="Mô tả roadmap" multiline value={text} maxLength={1000} placeholder="Quận 10, 7 ngày, 900k, 3 bữa/ngày" onChangeText={value => { if (!edit()) return; setDiscovery(null); setVenuesOpen(false); textRef.current = value; setText(value); }} />
       <Pressable accessibilityRole="button" accessibilityLabel="Ví dụ mô tả" accessibilityState={{ expanded: help }} onPress={() => setHelp(v => !v)} style={{ minHeight: 44, justifyContent: 'center' }}><Text style={[styles.secondary, { color: colors.accent }]}>Gợi ý mô tả {help ? '−' : '+'}</Text></Pressable>
-      {help && <Text style={styles.helper}>Quận 10, 7 ngày, 900k, 3 bữa/ngày, thích cơm, không ăn phở. Thêm “dự phòng 100k” hoặc “bắt đầu 2026-12-20”. Nguồn hiện hỗ trợ Quận 10; chưa xác minh nguyên liệu/dị ứng.</Text>}
+      {help && <Text style={styles.helper}>Quận 10, 7 ngày, 900k, 3 bữa/ngày, thích cơm, không ăn phở. Hoặc ghi khu vực khác, ví dụ Ninh Kiều, Cần Thơ. OpenStreetMap tìm quán; chỉ tạo roadmap khi thực đơn liên kết có giá và địa chỉ khớp. Dữ liệu có thể thiếu hoặc cũ. Chưa xác minh nguyên liệu/dị ứng.</Text>}
       <Button title="Tạo roadmap" disabled={!!busy || aiBusy || !text.trim()} onPress={() => create(false)} />
       <Text style={styles.helper}>Qwen local hiểu sở thích · bộ tính giữ số tiền VND chính xác.</Text>
     </Card> : <Button title="Sửa mô tả" secondary icon="create-outline" onPress={() => setPromptOpen(true)} />}
-    {!!busy && <><Text accessibilityLiveRegion="polite" style={styles.text}>{busy}</Text><Button title="Hủy thao tác" secondary disabled={busy === 'Đang lưu roadmap…'} onPress={cancel} /></>}
     {!!error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
+    {!discovery?.pricedSources.length && venuePanel}
     {!!ai.error && <Text accessibilityRole="alert" style={styles.error}>{ai.error}</Text>}
     {!busy && !draft && <Text style={styles.helper}>{!spendingAiAvailable ? 'AI local cần bản iPhone riêng.' : `AI local: ${aiPhase}.`}</Text>}
-    {draft?.warnings.map(warning => <Text key={warning} style={styles.advisory}>{warning}</Text>)}
+    {!discovery?.pricedSources.length && draft?.warnings.map(warning => <Text key={warning} style={styles.advisory}>{warning}</Text>)}
     {plan && draft && <>
       <Card>
         {totals && <>
@@ -205,6 +231,8 @@ export function RoadmapScreen() {
       {conditions && <Card><Text style={styles.heading}>{draft.mode === 'math' ? 'Điều kiện bộ tính' : 'Sở thích đang duyệt'}</Text><Text style={styles.secondary}>Thích: {plan.preferences.likedIds.map(id => draft.catalog.find(m => m.id === id)?.name ?? id).join(', ') || 'chưa chọn'}{`\n`}Không ăn: {plan.preferences.excludedIds.map(id => draft.catalog.find(m => m.id === id)?.name ?? id).join(', ') || 'chưa chọn'}</Text><Choice label="Món thích" dropdown multiple items={draft.catalog} selected={plan.preferences.likedIds} onSelect={id => changePreferences({ ...plan.preferences, likedIds: toggle(plan.preferences.likedIds, id) })} /><Choice label="Món không ăn" dropdown multiple items={draft.catalog} selected={plan.preferences.excludedIds} onSelect={id => changePreferences({ ...plan.preferences, excludedIds: toggle(plan.preferences.excludedIds, id) })} />{plan.preferences.frequency.map(f => <View key={f.mealId} style={{ gap: 8 }}><Text style={styles.text}>{draft.catalog.find(m => m.id === f.mealId)?.name}</Text><View style={styles.pair}><View style={styles.half}><Field label="Ít nhất / 7 ngày" keyboardType="number-pad" value={String(f.min)} onChangeText={v => changePreferences({ ...plan.preferences, frequency: plan.preferences.frequency.map(x => x.mealId === f.mealId ? { ...x, min: Number(v) } : x) })} /></View><View style={styles.half}><Field label="Tối đa / 7 ngày" keyboardType="number-pad" value={String(f.max)} onChangeText={v => changePreferences({ ...plan.preferences, frequency: plan.preferences.frequency.map(x => x.mealId === f.mealId ? { ...x, max: Number(v) } : x) })} /></View></View></View>)}<Text style={styles.helper}>Dị ứng/nguyên liệu chưa xác nhận: roadmap không chứng nhận an toàn ăn uống.</Text></Card>}
       <Button title="Cân lại ngân sách" secondary disabled={!!busy || aiBusy} onPress={() => rebalance()} />
     </>}
+    {!!discovery?.pricedSources.length && draft?.warnings.map(warning => <Text key={warning} style={styles.advisory}>{warning}</Text>)}
+    {!!discovery?.pricedSources.length && venuePanel}
     <Pressable accessibilityRole="button" accessibilityLabel="Kế hoạch đã lưu & phạm vi chi" accessibilityState={{ expanded: advanced }} onPress={() => setAdvanced(v => !v)} style={[styles.row, { minHeight: 44, paddingVertical: 8 }]}><Icon name="wallet-outline" /><Text style={[styles.secondary, { flex: 1 }]}>Đã lưu & phạm vi chi</Text><Icon name={advanced ? 'chevron-up' : 'chevron-down'} /></Pressable>
     {advanced && <Card>
       <Choice label="Mở roadmap đã lưu" dropdown items={store.ledger.spending.plans.map(p => ({ id: p.config.id, name: `${p.config.name} · ${p.config.startDay}` }))} selected={plan ? [plan.config.id] : []} onSelect={id => openGuarded(store.ledger.spending.plans.find(p => p.config.id === id)!)} />
@@ -213,7 +241,7 @@ export function RoadmapScreen() {
       <Text style={styles.helper}>Đã chi theo phạm vi được trừ tự động. Khoản cố định chưa chi có thể liên kết giao dịch để tránh trừ hai lần.</Text>
       {scope.fixed.map((fixed, i) => <View key={fixed.id} style={{ gap: 8 }}><Field label={`Tên khoản cố định ${i + 1}`} value={fixed.name} onChangeText={v => setScopeField('fixed', scope.fixed.map(f => f.id === fixed.id ? { ...f, name: v } : f))} /><Field label={`Tiền khoản cố định ${i + 1}`} keyboardType="number-pad" value={fixed.amount} onChangeText={v => setScopeField('fixed', scope.fixed.map(f => f.id === fixed.id ? { ...f, amount: v } : f))} /><Choice label={`Liên kết khoản cố định ${i + 1}`} dropdown items={[{ id: '', name: 'Chưa chi' }, ...store.ledger.transactions.filter(t => t.kind === 'expense').map(t => ({ id: t.id, name: `${t.note || 'Khoản chi'} · ${formatMoney(t.amount)}` }))]} selected={[fixed.transactionId ?? '']} onSelect={id => setScopeField('fixed', scope.fixed.map(f => f.id === fixed.id ? { ...f, transactionId: id || null } : f))} /><Button title={`Bỏ khoản ${i + 1}`} secondary onPress={() => setScopeField('fixed', scope.fixed.filter(f => f.id !== fixed.id))} /></View>)}
       <Button title="Thêm khoản cố định" secondary disabled={scope.fixed.length >= 100} onPress={() => setScopeField('fixed', [...scope.fixed, { id: newId(), name: '', amount: '', transactionId: null }])} />
-      {draft && <Button title="Roadmap mới" secondary disabled={!!busy || aiBusy} onPress={() => { if (!edit()) return; draftRef.current = null; setDraft(null); setPromptOpen(true); pinned.current = null; }} />}
+      {draft && <Button title="Roadmap mới" secondary disabled={!!busy || aiBusy} onPress={() => { if (!edit()) return; setDiscovery(null); setVenuesOpen(false); draftRef.current = null; setDraft(null); setPromptOpen(true); pinned.current = null; }} />}
     </Card>}
     <Pressable accessibilityRole="button" accessibilityLabel="Thiết lập AI local" accessibilityState={{ expanded: modelOpen }} style={[styles.row, { minHeight: 44, paddingVertical: 8 }]} onPress={() => setModelOpen(v => !v)}><Icon name="hardware-chip-outline" /><View style={{ flex: 1 }}><Text style={styles.secondary}>AI local & bộ tính</Text><Text style={styles.secondary}>{SPENDING_MODEL.name}</Text></View><Icon name={modelOpen ? 'chevron-up' : 'chevron-down'} /></Pressable>
     {modelOpen && <Card>

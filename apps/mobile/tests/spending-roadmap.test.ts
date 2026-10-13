@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseRoadmapPrompt, reviewRoadmapPreferences, roadmapAiAliases, restoreRoadmapAiPreferences } from '../src/spending-roadmap.ts';
-import { parseOnlineMenu, loadOnlineMeals } from '../src/spending-sources.ts';
+import { parseRoadmapPrompt, reviewRoadmapPreferences, roadmapAiAliases, restoreRoadmapAiPreferences, roadmapAreaMatches } from '../src/spending-roadmap.ts';
+import { parseOnlineMenu, loadPublishedMeals } from '../src/spending-sources.ts';
 import { applyCommand, emptyLedger } from '../src/domain.ts';
 import { planSpending } from '../src/spending.ts';
 
@@ -17,7 +17,7 @@ test('roadmap prompt converts VND units exactly and keeps preferences for local 
   assert.equal(parseRoadmapPrompt('Quận 10, 7 ngày, 900k, 3 bữa/ngày', day).budget, '900000');
 });
 test('roadmap prompt rejects unsupported area, malformed/ambiguous finance or calendar instead of inventing it', () => {
-  for (const value of ['Quận 1, 7 ngày, 900k', 'Hà Nội, 7 ngày, 900k', 'Vinh, 7 ngày, 900k', 'Quận 10, 1.5 ngày, 900k', 'Quận 10, 7 ngày, 1.5 bữa/ngày, 900k', 'Quận 10, 32 ngày, 900k', 'Quận 10, 7 ngày', 'Quận 10, 7 ngày, 900k hoặc 1 triệu', 'Quận 10, 7 ngày, -900k', 'Quận 10, 7 ngày, 900k, 4 bữa/ngày', 'Quận 10, 7 ngày, 900k, bắt đầu 2026-02-30']) assert.throws(() => parseRoadmapPrompt(value, day), value);
+  for (const value of ['Quận 10, 1.5 ngày, 900k', 'Quận 10, 7 ngày, 1.5 bữa/ngày, 900k', 'Quận 10, 32 ngày, 900k', 'Quận 10, 7 ngày', 'Quận 10, 7 ngày, 900k hoặc 1 triệu', 'Quận 10, 7 ngày, -900k', 'Quận 10, 7 ngày, 900k, 4 bữa/ngày', 'Quận 10, 7 ngày, 900k, bắt đầu 2026-02-30']) assert.throws(() => parseRoadmapPrompt(value, day), value);
 });
 test('source menu reads actual public fields, deduplicates and preserves provenance without executing markup', () => {
   const meals = parseOnlineMenu(html(), source, day);
@@ -27,20 +27,20 @@ test('source menu reads actual public fields, deduplicates and preserves provena
   assert.ok(meals.every(m => m.allergens.length === 0));
 });
 test('source boundary rejects foreign endpoints, wrong area/currency, malformed structured data and oversize content', () => {
-  for (const [body, url] of [[html(), 'https://evil.test/menu'], [html('Quận 1, Hồ Chí Minh'), source], [html(undefined, 'USD'), source], ['<script type="application/ld+json">{not JSON}</script>', source], ['x'.repeat(2 * 1024 * 1024 + 1), source]]) assert.throws(() => parseOnlineMenu(body!, url!, day));
+  for (const [body, url] of [[html(), 'https://evil.test/menu'], [html('Quận 1, Hồ Chí Minh'), source], [html(undefined, 'USD'), source], ['<script type="application/ld+json">{not JSON}</script>', source], ['x'.repeat(2 * 1024 * 1024 + 1), source]]) assert.throws(() => parseOnlineMenu(body!, url!, day, 'Quận 10, TP.HCM'));
 });
 test('public source loading returns partial success and never sends the prompt or ledger', async () => {
   const original = globalThis.fetch, requests: string[] = [];
   try {
     globalThis.fetch = async (url: any) => { requests.push(String(url)); if (requests.length > 1) throw new Error('offline'); return { ok: true, status: 200, url: String(url), text: async () => html() } as any; };
-    const result = await loadOnlineMeals('Quận 10, TP.HCM', new AbortController().signal);
+    const result = await loadPublishedMeals('Quận 10, TP.HCM', new AbortController().signal);
     assert.equal(result.meals.length, 2); assert.ok(result.warnings.length); assert.ok(requests.length <= 3);
     assert.ok(requests.every(x => x.startsWith('https://food.be.com.vn/ho-chi-minh/') && !x.includes('?')));
   } finally { globalThis.fetch = original; }
 });
 test('source cancellation is propagated; no subsequent requests, no invented fallback price', async () => {
   const controller = new AbortController(); controller.abort(); const original = globalThis.fetch; let calls = 0;
-  try { globalThis.fetch = async () => { calls++; throw Error('should not fetch'); }; await assert.rejects(loadOnlineMeals('Quận 10, TP.HCM', controller.signal)); assert.equal(calls, 0); }
+  try { globalThis.fetch = async () => { calls++; throw Error('should not fetch'); }; await assert.rejects(loadPublishedMeals('Quận 10, TP.HCM', controller.signal)); assert.equal(calls, 0); }
   finally { globalThis.fetch = original; }
 });
 test('online roadmap save atomically merges catalogue+plan with idempotency, preserves financial data and rejects stale/deficit', () => {
@@ -73,4 +73,39 @@ test('short inference aliases restore exact stable source identities and reject 
   assert.throws(() => restoreRoadmapAiPreferences({ likedIds: ['m7'], excludedIds: [], excludedAllergens: [], frequency: [] }, catalog));
   assert.throws(() => restoreRoadmapAiPreferences({ likedIds: ['m1'], excludedIds: ['m1'], excludedAllergens: [], frequency: [] }, catalog));
   assert.equal(catalog[0].priceSource, source);
+});
+
+test('Vietnam roadmap areas are preserved instead of silently selecting district ten', () => {
+ for(const area of ['Quận 1, TP.HCM','Hà Nội','Cần Thơ','Vinh','Huế','Đà Nẵng','Ninh Kiều, Cần Thơ']) {const p=parseRoadmapPrompt(`${area}, 7 ngày, 900k`,day);assert.ok(!p.area.includes('Quận 10'));assert.equal(p.preferenceText,'');assert.equal(p.budget,'900000');}
+ assert.match(parseRoadmapPrompt('quận 10, 900k, 7 ngày',day).area,/Quận 10/);
+ assert.throws(()=>parseRoadmapPrompt('900k, 7 ngày',day));
+});
+test('public menu supports another requested Vietnamese area but retains endpoint, location and price boundaries',()=>{
+ const q1='https://food.be.com.vn/ho-chi-minh/quan-an-co-nam-nguyen-trai-8197';const menu=parseOnlineMenu(html('212B Nguyễn Trãi, Quận 1, Hồ Chí Minh'),q1,day,'Quận 1, TP.HCM'); assert.equal(menu[0].price,'40000');assert.equal(menu[0].priceSource,q1);
+ assert.throws(()=>parseOnlineMenu(html('Quận 10, Hồ Chí Minh'),q1,day,'Quận 1, TP.HCM'));
+ for(const url of ['http://food.be.com.vn/ho-chi-minh/test-1','https://food.be.com.vn.evil.test/ho-chi-minh/test-1','https://user@food.be.com.vn/ho-chi-minh/test-1','https://food.be.com.vn/api/test-1','https://food.be.com.vn/ho-chi-minh/test-1?dish=x'])assert.throws(()=>parseOnlineMenu(html(),url,day,'Quận 10, TP.HCM'));
+});
+test('source discovers address-matched restaurants from public directory links, not a district-ten fallback',async()=>{
+ const original=globalThis.fetch,requests:string[]=[];const q1='https://food.be.com.vn/ho-chi-minh/quan-an-co-nam-nguyen-trai-8197';
+ try{globalThis.fetch=async(url:any)=>{requests.push(String(url));const body=String(url)===q1?html('212B Nguyễn Trãi, Quận 1, Hồ Chí Minh'):`<a href="${q1}">Quán Cô Năm</a><a href="${q1}">212B Nguyễn Trãi, Quận 1, Hồ Chí Minh</a><a href="https://evil.test/menu">Quận 1</a>`;return{ok:true,status:200,url:String(url),text:async()=>body}as any};
+ const r=await loadPublishedMeals('Quận 1, TP.HCM',new AbortController().signal);assert.ok(r.meals.length);assert.ok(r.meals.every(m=>m.priceSource===q1));assert.ok(requests.length<=7);assert.ok(!requests.includes(source));assert.ok(r.warnings.some(w=>/một phần|không.*tất cả|chưa.*toàn/i.test(w)));
+ }finally{globalThis.fetch=original;}
+});
+test('an area without verified dish prices reports missing data without synthesizing or mixing another area',async()=>{
+ const original=globalThis.fetch;try{globalThis.fetch=async(url:any)=>({ok:true,status:200,url:String(url),text:async()=>'<a href="/ha-noi">Hà Nội</a><a href="/ho-chi-minh">Hồ Chí Minh</a>'}as any);await assert.rejects(loadPublishedMeals('Ninh Kiều, Cần Thơ',new AbortController().signal),/chưa|Chưa|giá/);}finally{globalThis.fetch=original;}
+});
+
+test('numeric street addresses cannot satisfy a different requested district',()=>{
+ const address='1 Hòa Hưng, Quận 10, Hồ Chí Minh';assert.equal(roadmapAreaMatches('Quận 1, TP.HCM',address),false);
+ assert.throws(()=>parseOnlineMenu(html(address),'https://food.be.com.vn/ho-chi-minh/test-1',day,'Quận 1, TP.HCM'));
+ assert.equal(roadmapAreaMatches('Quận 10, TP.HCM',address),true);assert.equal(roadmapAreaMatches('Huế','123 Phố Huế, Hà Nội'),false);assert.equal(roadmapAreaMatches('Hà Nội','8 Đường Hà Nội, Quận 1, TP.HCM'),false);
+ assert.equal(roadmapAreaMatches('Ninh Kiều, Cần Thơ','Ninh, Kiều xóm, Cần Thơ'),false);
+});
+test('unaccented and compact basic prompts separate area and numeric settings without optional preference residue',()=>{
+ for(const prompt of ['Quận 10,900k,7 ngày','Quan 10,900k,7 ngay','Hà Nội,7 ngay,900k','Quận 10, 1,2 trieu, 7 ngay','Quận 10, 7 ngay, ngan sach 900k, 3 bua/ngay']){const p=parseRoadmapPrompt(prompt,day);assert.equal(p.days,7);assert.equal(p.preferenceText,'');assert.ok(!/ngay|bua|trieu|900k/i.test(p.area));}
+});
+
+test('existing exclusions and hard food clauses remain preferences instead of becoming geography',()=>{
+ for(const cue of ['bỏ món phở','loại trừ phở','bo mon pho','loai tru pho','chỉ ăn cơm','chi an com']){const p=parseRoadmapPrompt(`Quận 10,900k,7 ngày,${cue}`,day);assert.equal(p.area,'Quận 10, TP.HCM');assert.equal(p.preferenceText,cue);}
+ const catalogue=parseOnlineMenu(html(),source,day);assert.throws(()=>reviewRoadmapPreferences('chỉ ăn cơm',{likedIds:[],excludedIds:[],excludedAllergens:[],frequency:[]},catalogue));
 });
