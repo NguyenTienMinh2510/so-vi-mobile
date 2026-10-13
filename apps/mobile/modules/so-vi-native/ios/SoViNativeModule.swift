@@ -42,6 +42,15 @@ public final class SoViNativeModule: Module {
     AsyncFunction("recognizeTextAsync") { (uri: String) throws -> [String: Any] in
       try self.recognize(uri)
     }.runOnQueue(DispatchQueue(label: "local.sovi.vision", qos: .userInitiated))
+    AsyncFunction("verifyModelAsync") { (uri: String) throws -> Bool in
+      try ModelFileVerifier.verify(uri)
+    }.runOnQueue(DispatchQueue(label: "local.sovi.model-verifier", qos: .utility))
+    AsyncFunction("prepareModelDirectoryAsync") { () throws -> String in
+      try ModelFileVerifier.directory().absoluteString
+    }.runOnQueue(DispatchQueue(label: "local.sovi.model-directory", qos: .utility))
+    AsyncFunction("promoteModelAsync") { () throws in
+      try ModelFileVerifier.promote()
+    }.runOnQueue(DispatchQueue(label: "local.sovi.model-promote", qos: .utility))
   }
   private func cacheDirectory() throws -> URL {
     if let cache = appContext?.config.cacheDirectory { return cache }

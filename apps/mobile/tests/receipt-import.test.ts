@@ -97,7 +97,7 @@ test('reparse preserves one source, OCR warnings, backup schema and finances unt
   const edited = reparse(reviewed, 'receipt', 'HÓA ĐƠN\nTổng cộng: 162.000', reviewed.importedEvents[0].warnings.filter(warning => warning.startsWith('Nhận diện ảnh: ')), 'edit-original');
   assert.equal(edited.importedEvents[0].text, 'HÓA ĐƠN\nTổng cộng: 162.000'); assert.equal(edited.importedEvents[0].amount, '162000');
   assert.equal(edited.importedEvents[0].receivedAt, now); assert.equal(edited.transactions.length, 0);
-  const backup = domain.encodeBackup(edited, now); assert.equal(JSON.parse(backup).schemaVersion, 2);
+  const backup = domain.encodeBackup(edited, now); assert.equal(JSON.parse(backup).schemaVersion, 3);
   assert.deepEqual(domain.decodeBackup(backup, { now }).ledger, edited);
   const confirmed = apply(edited, 'import.confirm', 'confirm-receipt', { id: 'receipt', expectedVersion: edited.importedEvents[0].version, entry: entry('receipt-tx', '162000') });
   assert.equal(confirmed.transactions.length, 1); assert.equal(domain.balances(confirmed).total, '838000');

@@ -169,14 +169,14 @@ test('repeated malformed amount warnings remain reviewable without a partial rec
 test('v2 backup preserves import audit/dedup, v1 normalizes without financial loss, invalid links rejected', () => {
   let s = process(receive(fixture(), 'e1'), 'e1');
   s = run(s, 'import.confirm', 'confirm1', { id: 'e1', expectedVersion: 2, entry: entry('tx1') });
-  const json = domain.encodeBackup(s, now); assert.equal(JSON.parse(json).schemaVersion, 2);
+  const json = domain.encodeBackup(s, now); assert.equal(JSON.parse(json).schemaVersion, 3);
   assert.deepEqual(domain.decodeBackup(json, { now }).ledger, s);
   const corrupt = JSON.parse(json); corrupt.ledger.importedEvents[0].transactionId = 'missing';
   assert.throws(() => domain.decodeBackup(JSON.stringify(corrupt), { now }));
-  const legacyLedger: any = fixture(); delete legacyLedger.importedEvents; legacyLedger.schemaVersion = 1;
+  const legacyLedger: any = fixture(); delete legacyLedger.importedEvents; delete legacyLedger.spending; legacyLedger.schemaVersion = 1;
   const legacy = { schemaVersion: 1, exportedAt: now, ledger: legacyLedger };
   const restored: any = domain.decodeBackup(JSON.stringify(legacy), { now }).ledger;
-  assert.equal(restored.schemaVersion, 2); assert.deepEqual(restored.importedEvents, []);
+  assert.equal(restored.schemaVersion, 3); assert.deepEqual(restored.importedEvents, []);
   assert.deepEqual(domain.balances(restored), domain.balances(fixture()));
   legacy.ledger.unknown = 'extra'; assert.throws(() => domain.decodeBackup(JSON.stringify(legacy), { now }));
 });

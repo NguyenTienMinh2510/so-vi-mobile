@@ -1,6 +1,8 @@
+import { emptySpending, validateSpending, validateMeal, validatePreferences, validatePlanSave, type SpendingData, type MealOption, type Preferences, type SpendingPlan } from './spending.ts';
 import { parseImportText, MAX_IMPORT_TEXT, type ImportClassification, type ImportSuggestion } from './import.ts';
 export const MAX_MONEY = 9223372036854775807n;
 export const MIN_MONEY = -9223372036854775808n;
+export const MAX_SPENDING_RECEIPT = 2 * 1024 * 1024;
 export const MAX_BACKUP_BYTES = 10 * 1024 * 1024;
 export type Kind = 'income' | 'expense';
 type Versioned = { id: string; version: number };
@@ -13,8 +15,8 @@ export type Adjustment = Versioned & { walletId: string; amount: string; occurre
 export type Budget = Versioned & { name: string; limit: string; start: string; endExclusive: string; walletIds: string[]; categoryIds: string[] };
 export type Activity = { id: string; kind: 'mutation' | 'adjustment' | 'budget_exceeded'; entityId: string; message: string; createdAt: string; read: boolean };
 export type ImportedEvent = Versioned & Omit<ImportSuggestion, 'classification'> & { source: 'sms' | 'email' | 'text'; provider: string; sourceId: string | null; text: string; receivedAt: string; state: 'received' | 'processing' | 'needs_review' | 'imported' | 'duplicate' | 'failed'; classification: ImportClassification | null; transactionId: string | null; transferId: string | null; duplicateOf: string | null; error: string | null; ignored: boolean };
-export type Ledger = { schemaVersion: 2; wallets: Wallet[]; categories: Category[]; tags: Tag[]; transactions: Transaction[]; transfers: Transfer[]; adjustments: Adjustment[]; budgets: Budget[]; activities: Activity[]; settings: { timezone: string; onboarded: boolean }; receipts: { id: string; signature: string }[]; importedEvents: ImportedEvent[] };
-export type Backup = { schemaVersion: 2; exportedAt: string; ledger: Ledger };
+export type Ledger = { schemaVersion: 3; wallets: Wallet[]; categories: Category[]; tags: Tag[]; transactions: Transaction[]; transfers: Transfer[]; adjustments: Adjustment[]; budgets: Budget[]; activities: Activity[]; settings: { timezone: string; onboarded: boolean }; receipts: { id: string; signature: string }[]; importedEvents: ImportedEvent[]; spending: SpendingData };
+export type Backup = { schemaVersion: 3; exportedAt: string; ledger: Ledger };
 type Create<T extends Versioned> = Omit<T, 'version'>;
 type Update<T extends Versioned> = Create<T> & { expectedVersion: number };
 type Revision = { id: string; expectedVersion: number };
@@ -28,6 +30,7 @@ export type Command = Mutation<'wallet.create', Create<Wallet>> | Mutation<'wall
   | Mutation<'transfer.create', Create<Transfer>> | Mutation<'transfer.update', Update<Transfer>> | Mutation<'transfer.delete', Revision>
   | Mutation<'adjustment.create', Create<Adjustment>> | Mutation<'budget.create', Create<Budget>> | Mutation<'budget.update', Update<Budget>> | Mutation<'budget.delete', Revision>
   | Mutation<'activity.read', { id: string }> | Mutation<'settings.update', Ledger['settings']> | Mutation<'data.clear', { confirmation: 'XÓA' }>
+  | Mutation<'spending.meal.upsert', { meal: MealOption }> | Mutation<'spending.meal.delete', { id: string }> | Mutation<'spending.preferences.set', { preferences: Preferences }> | Mutation<'spending.plan.upsert', { plan: SpendingPlan; expectedVersion: number | null }> | Mutation<'spending.plan.delete', Revision>
   | Mutation<'import.receive', Pick<ImportedEvent, 'id' | 'source' | 'provider' | 'sourceId' | 'text' | 'receivedAt'>> | Mutation<'import.process', Revision> | Mutation<'import.reparse', Revision & { text: string; warnings: string[] }> | Mutation<'import.ignore', Revision> | Mutation<'import.confirm', Revision & { entry: ImportEntry }>;
 export class DomainError extends Error {
   code: string; field?: string;
@@ -76,9 +79,9 @@ export function dateRange(startDay: string, endDay: string, timezone: string): {
   boundary(endDay); return { start: boundary(startDay), endExclusive: boundary(next, false) };
 }
 export function emptyLedger(): Ledger {
-  return { schemaVersion: 2, wallets: [], categories: [
+  return { schemaVersion: 3, wallets: [], categories: [
     ['expense-food', 'Ăn uống', 'restaurant', 'expense'], ['expense-transport', 'Di chuyển', 'car', 'expense'], ['expense-home', 'Nhà cửa', 'home', 'expense'], ['expense-other', 'Chi khác', 'ellipsis-horizontal', 'expense'], ['income-salary', 'Lương', 'briefcase', 'income'], ['income-other', 'Thu khác', 'add-circle', 'income']
-  ].map(([id, name, icon, kind]) => ({ id, name, icon, kind: kind as Kind, archived: false, version: 1 })), tags: [], transactions: [], transfers: [], adjustments: [], budgets: [], activities: [], settings: { timezone: 'Asia/Ho_Chi_Minh', onboarded: false }, receipts: [], importedEvents: [] };
+  ].map(([id, name, icon, kind]) => ({ id, name, icon, kind: kind as Kind, archived: false, version: 1 })), tags: [], transactions: [], transfers: [], adjustments: [], budgets: [], activities: [], settings: { timezone: 'Asia/Ho_Chi_Minh', onboarded: false }, receipts: [], importedEvents: [], spending: emptySpending() };
 }
 function id(value: unknown, field = 'id'): asserts value is string { if (typeof value !== 'string' || !/^[a-zA-Z0-9_-]{1,160}$/.test(value) || ['__proto__', 'prototype', 'constructor'].includes(value)) fail('INVALID_INPUT', 'Mã bản ghi không hợp lệ.', field); }
 function text(value: unknown, field: string, max = 100, required = true): asserts value is string { if (typeof value !== 'string' || value.length > max || (required && !value.trim())) fail('INVALID_INPUT', `Trường ${field} không hợp lệ.`, field); }
@@ -92,8 +95,9 @@ function fields(row: unknown, expected: string[]) {
 }
 function identity(rows: Versioned[]) { const seen = new Set<string>(); for (const row of rows) { id(row.id); revision(row.version); if (seen.has(row.id)) fail('INVALID_RELATION', 'Mã bản ghi trùng.'); seen.add(row.id); } }
 export function validateLedger(s: Ledger, now: string): Ledger {
-  timestamp(now, 'now'); fields(s, ['schemaVersion', 'wallets', 'categories', 'tags', 'transactions', 'transfers', 'adjustments', 'budgets', 'activities', 'settings', 'receipts', 'importedEvents']);
-  if (s.schemaVersion !== 2) fail('INVALID_BACKUP', 'Phiên bản dữ liệu chưa được hỗ trợ.');
+  timestamp(now, 'now'); fields(s, ['schemaVersion', 'wallets', 'categories', 'tags', 'transactions', 'transfers', 'adjustments', 'budgets', 'activities', 'settings', 'receipts', 'importedEvents', 'spending']);
+  if (s.schemaVersion !== 3) fail('INVALID_BACKUP', 'Phiên bản dữ liệu chưa được hỗ trợ.');
+  validateSpending(s);
   const tables = [s.wallets, s.categories, s.tags, s.transactions, s.transfers, s.adjustments, s.budgets];
   for (const rows of [...tables, s.activities, s.receipts, s.importedEvents]) if (!Array.isArray(rows) || rows.length > 100000) fail('INVALID_BACKUP', 'Danh sách bản ghi không hợp lệ hoặc quá lớn.');
   for (const rows of tables) identity(rows);
@@ -120,7 +124,7 @@ export function validateLedger(s: Ledger, now: string): Ledger {
   }
   const activityIds = new Set<string>();
   for (const a of s.activities) { fields(a, ['id', 'kind', 'entityId', 'message', 'createdAt', 'read']); id(a.id); id(a.entityId); if (activityIds.has(a.id)) fail('INVALID_RELATION', 'Hoạt động trùng.'); activityIds.add(a.id); if (!['mutation', 'adjustment', 'budget_exceeded'].includes(a.kind)) fail('INVALID_BACKUP', 'Loại hoạt động không hợp lệ.'); text(a.message, 'message', 4000); notFuture(a.createdAt, now, 'createdAt'); bool(a.read); }
-  const receiptIds = new Set<string>(); for (const r of s.receipts) { fields(r, ['id', 'signature']); id(r.id); text(r.signature, 'signature', 20000); if (receiptIds.has(r.id)) fail('INVALID_RELATION', 'Biên nhận trùng.'); receiptIds.add(r.id); }
+  const receiptIds = new Set<string>(); for (const r of s.receipts) { fields(r, ['id', 'signature']); id(r.id); text(r.signature, 'signature', MAX_SPENDING_RECEIPT); if (receiptIds.has(r.id)) fail('INVALID_RELATION', 'Biên nhận trùng.'); receiptIds.add(r.id); }
   validateImportedEvents(s, now);
   validateHistory(s); checked(s.transactions.filter(t => t.kind === 'income').reduce((n, t) => n + money(t.amount), 0n)); checked(s.transactions.filter(t => t.kind === 'expense').reduce((n, t) => n + money(t.amount), 0n));
   return s;
@@ -247,6 +251,7 @@ export function applyCommand(state: Ledger, command: Command, context: { now: st
     'transaction.create': ['id', 'walletId', 'categoryId', 'kind', 'amount', 'occurredAt', 'note', 'tagIds'], 'transaction.update': ['id', 'walletId', 'categoryId', 'kind', 'amount', 'occurredAt', 'note', 'tagIds', 'expectedVersion'], 'transaction.delete': ['id', 'expectedVersion'],
     'transfer.create': ['id', 'fromWalletId', 'toWalletId', 'amount', 'occurredAt', 'note'], 'transfer.update': ['id', 'fromWalletId', 'toWalletId', 'amount', 'occurredAt', 'note', 'expectedVersion'], 'transfer.delete': ['id', 'expectedVersion'],
     'adjustment.create': ['id', 'walletId', 'amount', 'occurredAt', 'note'], 'budget.create': ['id', 'name', 'limit', 'start', 'endExclusive', 'walletIds', 'categoryIds'], 'budget.update': ['id', 'name', 'limit', 'start', 'endExclusive', 'walletIds', 'categoryIds', 'expectedVersion'], 'budget.delete': ['id', 'expectedVersion'],
+    'spending.meal.upsert': ['meal'], 'spending.meal.delete': ['id'], 'spending.preferences.set': ['preferences'], 'spending.plan.upsert': ['plan', 'expectedVersion'], 'spending.plan.delete': ['id', 'expectedVersion'],
     'activity.read': ['id'], 'settings.update': ['timezone', 'onboarded'], 'data.clear': ['confirmation'],
     'import.receive': ['id', 'source', 'provider', 'sourceId', 'text', 'receivedAt'], 'import.process': ['id', 'expectedVersion'], 'import.reparse': ['id', 'expectedVersion', 'text', 'warnings'], 'import.ignore': ['id', 'expectedVersion'], 'import.confirm': ['id', 'expectedVersion', 'entry']
   };
@@ -257,7 +262,21 @@ export function applyCommand(state: Ledger, command: Command, context: { now: st
   const before = new Map(s.budgets.map(b => [b.id, budgetStatus(s, b.id).overspent !== '0']));
   const tableMap = { wallet: s.wallets, category: s.categories, tag: s.tags, transaction: s.transactions, transfer: s.transfers, adjustment: s.adjustments, budget: s.budgets };
   let effectiveEntity = entity, effectiveAction = action, effectivePayload: Command['payload'] | ImportEntry['payload'] = p;
-  if (command.type === 'import.receive') {
+  if (command.type === 'spending.meal.upsert') {
+    const meal = command.payload.meal; validateMeal(meal); const i = s.spending.catalog.findIndex(m => m.id === meal.id); if (i < 0) s.spending.catalog.push(meal); else s.spending.catalog[i] = meal;
+  } else if (command.type === 'spending.meal.delete') {
+    const meal = find(s.spending.catalog, command.payload.id); s.spending.catalog.splice(s.spending.catalog.indexOf(meal), 1);
+  } else if (command.type === 'spending.preferences.set') {
+    validatePreferences(command.payload.preferences, s.spending.catalog); s.spending.preferences = command.payload.preferences;
+  } else if (command.type === 'spending.plan.upsert') {
+    const { plan, expectedVersion } = command.payload; const old = s.spending.plans.find(x => x.config.id === plan.config.id);
+    if (expectedVersion !== null) revision(expectedVersion);
+    if ((old?.version ?? null) !== expectedVersion) fail('STALE', 'Kế hoạch đã thay đổi. Mở lại và tính lại đề xuất.');
+    validatePlanSave(s, plan, context.now, old); const saved = { ...plan, version: (old?.version ?? 0) + 1 }; if (old) s.spending.plans[s.spending.plans.indexOf(old)] = saved; else s.spending.plans.push(saved);
+  } else if (command.type === 'spending.plan.delete') {
+    const old = s.spending.plans.find(x => x.config.id === command.payload.id); if (!old) fail('NOT_FOUND', 'Kế hoạch không còn tồn tại.');
+    revision(command.payload.expectedVersion); if (old.version !== command.payload.expectedVersion) fail('STALE', 'Kế hoạch đã thay đổi.'); s.spending.plans.splice(s.spending.plans.indexOf(old), 1);
+  } else if (command.type === 'import.receive') {
     const incoming = command.payload; id(incoming.id); if (s.importedEvents.some(e => e.id === incoming.id)) fail('INVALID_INPUT', 'Mã Inbox đã tồn tại.');
     text(incoming.provider, 'provider', 200); if (incoming.sourceId !== null) text(incoming.sourceId, 'sourceId', 200);
     s.importedEvents.push({ ...incoming, provider: incoming.provider.trim(), sourceId: incoming.sourceId?.trim() ?? null, version: 1, state: 'received', classification: null, amount: null, reference: null, warnings: [], kind: null, transactionId: null, transferId: null, duplicateOf: null, error: null, ignored: false });
@@ -311,7 +330,8 @@ export function applyCommand(state: Ledger, command: Command, context: { now: st
       if (effectiveEntity === 'transfer') { const t = effectivePayload as Create<Transfer>; active(s.wallets, t.fromWalletId, 'fromWalletId'); active(s.wallets, t.toWalletId, 'toWalletId'); }
       else { const t = effectivePayload as Create<Transaction>; active(s.wallets, t.walletId, 'walletId'); if (effectiveEntity === 'transaction') { active(s.categories, t.categoryId, 'categoryId'); ids(t.tagIds, 'tagIds'); for (const key of t.tagIds) active(s.tags, key, 'tagIds'); } }
     }
-  } else if (entity === 'import') { /* Inbox-only transitions have no financial entry. */ }
+  } else if (entity === 'spending') { /* Planning does not write financial entries. */ }
+  else if (entity === 'import') { /* Inbox-only transitions have no financial entry. */ }
   else if (command.type === 'settings.update') { s.settings = { ...command.payload }; }
   else if (command.type === 'activity.read') { find(s.activities, command.payload.id).read = true; }
   else if (command.type === 'data.clear') { if (command.payload.confirmation !== 'XÓA') fail('INVALID_INPUT', 'Cần xác nhận XÓA.'); Object.assign(s, emptyLedger()); }
@@ -321,25 +341,30 @@ export function applyCommand(state: Ledger, command: Command, context: { now: st
     s.activities.push({ id: `${command.mutationId}-change`, kind: entity === 'adjustment' ? 'adjustment' : 'mutation', entityId, message: `${action === 'create' ? 'Tạo' : action === 'delete' ? 'Xóa' : action === 'archive' ? 'Đổi trạng thái' : 'Cập nhật'} ${actionLabels[entity] ?? entity}`, createdAt: context.now, read: false });
     for (const b of s.budgets) if (!before.get(b.id) && budgetStatus(s, b.id).overspent !== '0') s.activities.push({ id: `${command.mutationId}-budget-${b.id}`, kind: 'budget_exceeded', entityId: b.id, message: `${b.name} vượt ${formatMoney(budgetStatus(s, b.id).overspent)}`, createdAt: context.now, read: false });
   }
-  s.receipts.push({ id: command.mutationId, signature: sig }); validateLedger(s, context.now); backupText({ schemaVersion: 2, exportedAt: context.now, ledger: s }); return s;
+  s.receipts.push({ id: command.mutationId, signature: sig }); validateLedger(s, context.now); backupText({ schemaVersion: 3, exportedAt: context.now, ledger: s }); return s;
 }
 export function validateBackup(value: unknown, context: { now: string }): Backup {
   try {
     fields(value, ['schemaVersion', 'exportedAt', 'ledger']); const original = value as { schemaVersion: number; exportedAt: string; ledger: Ledger };
-    if (![1, 2].includes(original.schemaVersion)) fail('INVALID_BACKUP', 'Phiên bản backup chưa được hỗ trợ.');
+    if (![1, 2, 3].includes(original.schemaVersion)) fail('INVALID_BACKUP', 'Phiên bản backup chưa được hỗ trợ.');
     notFuture(original.exportedAt, context.now, 'exportedAt');
     let ledger = original.ledger;
+    if ((ledger as { schemaVersion: number }).schemaVersion !== original.schemaVersion) fail('INVALID_BACKUP', 'Phiên bản sổ không khớp backup.');
     if (original.schemaVersion === 1) {
       fields(ledger, ['schemaVersion', 'wallets', 'categories', 'tags', 'transactions', 'transfers', 'adjustments', 'budgets', 'activities', 'settings', 'receipts']);
       if ((ledger as { schemaVersion: number }).schemaVersion !== 1) fail('INVALID_BACKUP', 'Phiên bản sổ không khớp backup.');
-      ledger = { ...ledger, schemaVersion: 2, importedEvents: [] };
+      ledger = { ...ledger, schemaVersion: 2, importedEvents: [] } as unknown as Ledger;
     }
-    validateLedger(ledger, context.now); const normalized: Backup = { schemaVersion: 2, exportedAt: original.exportedAt, ledger }; backupText(normalized); return JSON.parse(JSON.stringify(normalized)) as Backup;
+    if (original.schemaVersion < 3) {
+      fields(ledger, ['schemaVersion', 'wallets', 'categories', 'tags', 'transactions', 'transfers', 'adjustments', 'budgets', 'activities', 'settings', 'receipts', 'importedEvents']);
+      ledger = { ...ledger, schemaVersion: 3, spending: emptySpending() };
+    }
+    validateLedger(ledger, context.now); const normalized: Backup = { schemaVersion: 3, exportedAt: original.exportedAt, ledger }; backupText(normalized); return JSON.parse(JSON.stringify(normalized)) as Backup;
   }
   catch (e) { if (e instanceof DomainError) throw e; fail('INVALID_BACKUP', 'Cấu trúc backup không hợp lệ.'); }
 }
 function backupText(value: Backup): string { const json = JSON.stringify(value, null, 2); if (new TextEncoder().encode(json).byteLength > MAX_BACKUP_BYTES) fail('INVALID_BACKUP', 'Dữ liệu vượt dung lượng backup 10 MB. Không lưu thêm; xuất backup hiện tại để bảo toàn dữ liệu.'); return json; }
-export function encodeBackup(state: Ledger, exportedAt: string): string { return backupText(validateBackup({ schemaVersion: 2, exportedAt, ledger: state }, { now: exportedAt })); }
+export function encodeBackup(state: Ledger, exportedAt: string): string { return backupText(validateBackup({ schemaVersion: 3, exportedAt, ledger: state }, { now: exportedAt })); }
 export function decodeBackup(value: string, context: { now: string }): Backup {
   if (typeof value !== 'string' || new TextEncoder().encode(value).byteLength > MAX_BACKUP_BYTES) fail('INVALID_BACKUP', 'Backup vượt giới hạn 10 MB.');
   let parsed: unknown; try { parsed = JSON.parse(value); } catch { fail('INVALID_BACKUP', 'File không phải JSON hợp lệ.'); } return validateBackup(parsed, context);

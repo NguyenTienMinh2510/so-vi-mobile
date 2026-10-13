@@ -30,8 +30,11 @@ function harness(screen: 'home' | 'more' | 'legacy', initial = fixture(), ingres
     useRef: (initial: any) => { const at = cursor++; if (!(at in slots)) slots[at] = { current: initial }; return slots[at]; },
     useEffect: (callback: any, deps?: any[]) => { const at = cursor++; const previous = slots[at]; if (!previous || !deps || deps.some((value, index) => !Object.is(value, previous.deps?.[index]))) { slots[at] = { deps }; effects.push(callback); } }
   };
+  const ui: any = {};
+  runInNewContext(ts.transpileModule(readFileSync(new URL('../src/ui.tsx', import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.React, esModuleInterop: true } }).outputText, { exports: ui, require: (name: string) => name === 'react' ? react : name === 'react-native' ? { StyleSheet: { create: (value: any) => value } } : {} });
+  class FixtureDate extends Date { constructor(value?: string | number) { super(value ?? now); } }
   const exports: any = {}; const source = ts.transpileModule(readFileSync(new URL(`../src/${screen === 'legacy' ? 'import-screen' : 'screens'}.tsx`, import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.React, esModuleInterop: true } }).outputText;
-  runInNewContext(source, { exports, Date, Error, setTimeout, clearTimeout, require: (name: string) => {
+  runInNewContext(source, { exports, Date: FixtureDate, Error, setTimeout, clearTimeout, require: (name: string) => {
     if (name === 'react') return react;
     if (name === 'react-native') return { Text: 'Text', View: 'View', Pressable: 'Pressable', SectionList: 'SectionList', FlatList: 'FlatList', ActivityIndicator: 'ActivityIndicator', Platform: { OS: 'ios' }, AppState: { addEventListener: () => ({ remove() {} }) } };
     if (name === 'expo-router') return { router: { push: (value: any) => routes.push(value), replace: (value: any) => routes.push(value) }, useLocalSearchParams: () => ({}) };
@@ -40,7 +43,7 @@ function harness(screen: 'home' | 'more' | 'legacy', initial = fixture(), ingres
     if (name === './store') return { useLedger: store, newId: () => 'synthetic', errorMessage: (error: Error) => error.message };
     if (name === './app-lock') return { useAppLock: () => ({ enabled: true, assertUnlocked() {} }) };
     if (name === './native') return { isNativeImportAvailable: () => true, sharedInboxStatus: async () => ({ available: true, error: '' }) };
-    if (name === './ui') return { Page: 'Page', Card: 'Card', Button: 'Button', Field: 'Field', Choice: 'Choice', Empty: 'Empty', Icon: 'Icon', styles: {}, colors: {}, localInput: (value: string) => value };
+    if (name === './ui') return { Page: 'Page', Card: 'Card', Button: 'Button', Field: 'Field', Choice: 'Choice', Empty: 'Empty', Icon: 'Icon', styles: ui.styles, colors: ui.colors, localInput: (value: string) => value };
     return {};
   } });
   function nodes(node: any): any[] {
@@ -52,7 +55,7 @@ function harness(screen: 'home' | 'more' | 'legacy', initial = fixture(), ingres
   const render = () => { cursor = 0; dirty = false; tree = screen === 'home' ? exports.TransactionsScreen() : screen === 'more' ? exports.MoreScreen() : exports.InboxScreen(); return nodes(tree); };
   const flush = async () => { for (let index = 0; index < 35; index++) { if (dirty || !tree) render(); effects.splice(0).forEach(callback => callback()); await Promise.resolve(); } };
   const retry = () => { const button = render().find(node => node.type === 'Button' && node.props.title === 'Thử nhận lại Shortcuts / chia sẻ'); assert.ok(button, 'home must retain native queue recovery without requiring a waiting event'); return button; };
-  return { render, flush, retry, routes, commands, order, ledger: () => ledger, tree: () => tree, calls: () => ({ retry: retryCalls, refresh: refreshCalls }), fail: (value: boolean) => { failRetry = value; }, pause: () => { delayRetry = true; }, release: () => { delayRetry = false; assert.ok(releaseRetry); releaseRetry(); },
+  return { render, flush, retry, routes, commands, order, styles: ui.styles, ledger: () => ledger, tree: () => tree, calls: () => ({ retry: retryCalls, refresh: refreshCalls }), fail: (value: boolean) => { failRetry = value; }, pause: () => { delayRetry = true; }, release: () => { delayRetry = false; assert.ok(releaseRetry); releaseRetry(); },
     enqueue: () => pending.push({ id: '11111111-2222-4333-8444-555555555555', source: 'email', provider: 'Ngân hàng thử', sourceId: 'SYNTHETIC-MAIL', text: 'Thanh toán thành công 58.000 VND. Mã GD: TESTRECOVER', receivedAt: now }), pending: () => pending.length };
 }
 function openReviewRows(app: ReturnType<typeof harness>) {
@@ -63,15 +66,26 @@ function openReviewRows(app: ReturnType<typeof harness>) {
   }
   return ids;
 }
+const renderedText = (node: any): string => !node ? '' : Array.isArray(node) ? node.map(renderedText).join(' ') : typeof node === 'object' ? renderedText(node.props?.children) : String(node);
+const flattenedStyle = (style: any): any => Object.assign({}, ...[style].flat(Infinity).filter(value => value && typeof value === 'object'));
+function waitingLink(app: ReturnType<typeof harness>) {
+  const links = app.render().filter(node => ['Button', 'Pressable'].includes(node.type) && /Chờ duyệt và lịch sử/.test(node.props.title ?? node.props.accessibilityLabel ?? renderedText(node)));
+  assert.equal(links.length, 1, 'home must have one compact waiting/history link'); return links[0];
+}
 
-test('Transactions shows waiting source states in stable recent order and opening them changes no money or audit data', async () => {
+test('Transactions replaces source rows with one counted waiting link and destination preserves stable audit order without money writes', async () => {
   const ledger = fixture(); ledger.importedEvents = [event('old', 'received', '2026-10-10T00:00:00.000Z'), event('same-a', 'processing', now), event('same-z', 'needs_review', now), event('failed', 'failed', '2026-10-11T00:00:00.000Z'), event('more-two', 'received', '2026-10-11T22:00:00.000Z'), event('more-one', 'failed', '2026-10-11T20:00:00.000Z'), event('ignored', 'needs_review', now, true), event('posted', 'imported', now), event('copy', 'duplicate', now)];
   const app = harness('home', ledger); await app.flush(); const before = JSON.stringify(app.ledger());
   assert.ok(app.render().some(node => node.type === 'Text' && JSON.stringify(node.props.children).includes('Chờ duyệt')));
-  assert.deepEqual(openReviewRows(app), ['same-z', 'same-a', 'more-two', 'more-one', 'failed']);
-  const viewAll = app.render().find(node => node.type === 'Button' && /xem.*(?:tất cả|lịch sử)/i.test(node.props.title)); assert.ok(viewAll, 'waiting items beyond the first five must remain accessible');
+  assert.deepEqual(openReviewRows(app), [], 'source rows belong on the history destination');
+  assert.ok(!app.render().some(node => node.type === 'Text' && ledger.importedEvents.some(event => renderedText(node).includes(event.text) || renderedText(node).includes(event.provider))));
+  const viewAll = waitingLink(app);
+  assert.match(`${viewAll.props.accessibilityLabel ?? ''} ${renderedText(app.tree())}`, /(^|\D)6(\D|$)/, 'waiting count must include all six eligible states and exclude ignored/imported/duplicate');
+  const linkStyle = flattenedStyle(viewAll.type === 'Button' ? app.styles.button : typeof viewAll.props.style === 'function' ? viewAll.props.style({ pressed: false }) : viewAll.props.style);
+  assert.ok(linkStyle.minHeight >= 44);
   viewAll.props.onPress(); const destination = app.routes.at(-1); assert.equal(typeof destination === 'string' ? destination : destination?.pathname, '/inbox');
   const history = harness('legacy', app.ledger()); await history.flush(); assert.deepEqual(openReviewRows(history).sort(), ledger.importedEvents.map(event => event.id).sort());
+  const ordered = harness('legacy', app.ledger()); await ordered.flush(); assert.deepEqual(openReviewRows(ordered), [...ledger.importedEvents].sort((a, b) => b.receivedAt.localeCompare(a.receivedAt) || b.id.localeCompare(a.id)).map(event => event.id));
   assert.equal(JSON.stringify(app.ledger()), before); assert.equal(app.commands.length, 0); assert.equal(app.ledger().transactions.length, 0);
 });
 
@@ -84,20 +98,60 @@ test('home and More expose no Inbox action while the legacy waiting route retain
 });
 
 test('zero-pending home retains native queue errors and a guarded durable retry before refresh', async () => {
-  const app = harness('home', fixture(), 'Hàng chờ Shortcuts còn nguồn chưa nhận'); await app.flush();
-  assert.ok(app.render().some(node => node.type === 'Text' && node.props.accessibilityRole === 'alert' && JSON.stringify(node.props.children).includes('nguồn chưa nhận')));
+  const ingressError = 'Hàng chờ Shortcuts còn nguồn chưa nhận'; const app = harness('home', fixture(), ingressError); await app.flush();
+  const context = app.render().find(node => node.type === 'Text' && node.props.accessibilityRole === 'alert' && node.props.accessibilityLabel?.includes(ingressError));
+  assert.ok(context, 'compact home error must retain the full native error for accessibility'); assert.ok(renderedText(context).trim().length > 0);
+  assert.equal(flattenedStyle(context.props.style).fontSize, 12); assert.equal(flattenedStyle(context.props.style).lineHeight, 18); assert.equal(flattenedStyle(context.props.style).fontStyle, 'italic');
+  const destination = harness('legacy', app.ledger(), ingressError); await destination.flush(); assert.ok(destination.render().some(node => node.type === 'Text' && node.props.accessibilityRole === 'alert' && renderedText(node).includes(ingressError)));
   app.enqueue(); app.pause(); const retry = app.retry(); retry.props.onPress(); retry.props.onPress(); await app.flush();
   assert.equal(app.calls().retry, 1); assert.equal(app.retry().props.disabled, true); assert.equal(app.pending(), 1);
   app.release(); await app.flush(); assert.deepEqual(app.order, ['retry', 'refresh']); assert.equal(app.pending(), 0);
   assert.deepEqual(app.commands.map(command => command.type), ['import.receive', 'import.process']);
   assert.equal(app.ledger().importedEvents[0].state, 'needs_review'); assert.equal(app.ledger().transactions.length, 0); assert.equal(domain.balances(app.ledger()).total, '1000000');
   assert.ok(!app.render().some(node => node.type === 'Text' && JSON.stringify(node.props.children).includes('nguồn chưa nhận')));
+  assert.ok(!app.render().some(node => node.type === 'Button' && node.props.title === 'Thử nhận lại Shortcuts / chia sẻ'), 'successful recovery must return home to its quiet default');
 });
 
 test('retry failure stays visible on empty home and permits a later successful recovery', async () => {
-  const app = harness('home'); await app.flush(); app.fail(true); app.retry().props.onPress(); await app.flush();
+  const app = harness('home', fixture(), 'Lỗi hàng chờ thử cần nhận lại'); await app.flush(); app.fail(true); app.retry().props.onPress(); await app.flush();
   assert.ok(app.render().some(node => node.type === 'Text' && node.props.accessibilityRole === 'alert' && JSON.stringify(node.props.children).includes('Lỗi nhận lại tổng hợp')));
   assert.equal(app.retry().props.disabled, false); assert.equal(app.calls().refresh, 0); assert.equal(app.ledger().transactions.length, 0);
   app.fail(false); app.enqueue(); app.retry().props.onPress(); await app.flush(); assert.equal(app.calls().retry, 2); assert.equal(app.calls().refresh, 1);
   assert.equal(app.ledger().importedEvents.length, 1); assert.equal(app.ledger().transactions.length, 0);
+  assert.ok(!app.render().some(node => node.type === 'Button' && node.props.title === 'Thử nhận lại Shortcuts / chia sẻ'));
+});
+
+test('monthly net flow precedes camera photo paste waiting and search with correct routes and no lock or source clutter', async () => {
+  for (const [income, expense] of [['234000', '125000'], ['125000', '234000']]) {
+    const ledger = fixture();
+    for (const [kind, amount] of [['income', income], ['expense', expense]] as const) ledger.transactions.push({ id: kind, version: 1, walletId: 'cash', categoryId: ledger.categories.find(category => category.kind === kind)!.id, kind, amount, occurredAt: now, note: '', tagIds: [] });
+    const app = harness('home', ledger); await app.flush(); const before = JSON.stringify(app.ledger()); const rows = app.render();
+    const summaryAt = rows.findIndex(node => node.type === 'Card' && /Dòng tiền/i.test(renderedText(node)) && renderedText(node).includes(domain.formatMoney(BigInt(income) - BigInt(expense))));
+    assert.ok(summaryAt >= 0, 'summary must use monthly net flow, including negative net, rather than the wallet balance');
+    assert.ok(renderedText(rows[summaryAt]).includes(domain.formatMoney(income))); assert.ok(renderedText(rows[summaryAt]).includes(domain.formatMoney(expense)));
+    for (const title of ['Chụp ảnh', 'Chọn ảnh', 'Dán văn bản']) assert.ok(rows.findIndex(node => node.type === 'Button' && node.props.title === title) > summaryAt);
+    const camera = rows.find(node => node.type === 'Button' && node.props.title === 'Chụp ảnh'); const photo = rows.find(node => node.type === 'Button' && node.props.title === 'Chọn ảnh'); const paste = rows.find(node => node.type === 'Button' && node.props.title === 'Dán văn bản');
+    waitingLink(app); const waitAt = rows.findIndex(node => ['Button', 'Pressable'].includes(node.type) && /Chờ duyệt và lịch sử/.test(node.props.title ?? node.props.accessibilityLabel ?? renderedText(node))); const search = rows.findIndex(node => node.type === 'Field' && /Tìm ghi chú/.test(node.props.label));
+    assert.ok(rows.indexOf(camera) < rows.indexOf(photo)); assert.ok(rows.indexOf(photo) < rows.indexOf(paste));
+    assert.ok(rows.indexOf(paste) < waitAt); assert.ok(search > waitAt);
+    assert.ok(!rows.some(node => /Khóa ứng dụng|Cài đặt khóa/.test(node.props.title ?? renderedText(node))));
+    camera.props.onPress(); photo.props.onPress(); paste.props.onPress();
+    assert.deepEqual(JSON.parse(JSON.stringify(app.routes)), [{ pathname: '/import-text', params: { input: 'camera' } }, { pathname: '/import-text', params: { input: 'photo' } }, '/import-text']);
+    assert.ok(!rows.some(node => node.type === 'Button' && node.props.title === 'Thử nhận lại Shortcuts / chia sẻ'));
+    assert.equal(JSON.stringify(app.ledger()), before); assert.equal(app.commands.length, 0);
+  }
+});
+
+test('quiet native status is small italic and recovery remains available with visible error and complete destination history', async () => {
+  for (const screen of ['home', 'legacy'] as const) {
+    const app = harness(screen); await app.flush(); const before = JSON.stringify(app.ledger());
+    const status = app.render().filter(node => node.type === 'Text' && /chia sẻ|Shortcuts|nhận.*nội dung|kiểm tra.*ghi sổ/i.test(renderedText(node)) && node.props.accessibilityRole !== 'alert');
+    assert.ok(status.length > 0, `${screen} must preserve concise native/source context`);
+    for (const node of status) { const style = flattenedStyle(node.props.style); assert.equal(style.fontSize, 12); assert.equal(style.lineHeight, 18); assert.equal(style.fontStyle, 'italic'); }
+    if (screen === 'home') { assert.ok(!app.render().some(node => node.type === 'Button' && node.props.title === 'Thử nhận lại Shortcuts / chia sẻ')); const link = waitingLink(app); assert.match(`${link.props.accessibilityLabel ?? ''} ${renderedText(app.tree())}`, /(^|\D)0(\D|$)/); link.props.onPress(); assert.equal(app.routes.at(-1), '/inbox'); } else assert.ok(app.retry());
+    assert.equal(JSON.stringify(app.ledger()), before); assert.equal(app.commands.length, 0);
+  }
+  const error = 'Hàng chờ chưa đọc được — thử lại để nhận nguồn'; const app = harness('legacy', fixture(), error); await app.flush();
+  assert.ok(app.render().some(node => node.type === 'Text' && node.props.accessibilityRole === 'alert' && renderedText(node).includes(error))); assert.ok(app.retry());
+  assert.equal(app.ledger().transactions.length, 0); assert.equal(app.commands.length, 0);
 });

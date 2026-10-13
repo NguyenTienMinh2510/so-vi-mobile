@@ -64,7 +64,7 @@ test('captured StoreProvider execute and restore consult the live app lock befor
   assert.doesNotThrow(() => applyCommand(emptyLedger(), command, { now: '2026-10-11T04:00:00.000Z' }), 'the blocked command must otherwise be valid');
   const outcomes = await Promise.allSettled([
     captured.execute(command, 0),
-    captured.restore({ schemaVersion: 2, exportedAt: '2026-10-11T04:00:00.000Z', ledger: emptyLedger() }, 0),
+    captured.restore({ schemaVersion: 3, exportedAt: '2026-10-11T04:00:00.000Z', ledger: emptyLedger() }, 0),
   ]);
   assert.equal(outcomes[0].status, 'rejected'); assert.equal(outcomes[1].status, 'rejected');
   assert.deepEqual(app.commands, []); assert.equal(app.restores(), 0); assert.equal(app.loaded().wallets.length, 0);

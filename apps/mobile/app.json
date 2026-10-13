@@ -36,7 +36,15 @@
         }
       ],
       "./plugins/with-so-vi-native",
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "llama.rn",
+        {
+          "enableEntitlements": false,
+          "enableOpenCLAndHexagon": false,
+          "forceCxx20": true
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": false

@@ -31,7 +31,7 @@ test('schema2 migration retains exact money; import/restore failures roll back e
   const repo = new exports.LedgerRepository(adapter);
   try {
     await repo.initialize(); let loaded = await repo.load();
-    assert.equal(db.prepare('PRAGMA user_version').get()!.user_version, 3);
+    assert.equal(db.prepare('PRAGMA user_version').get()!.user_version, 4);
     assert.equal(domain.balances(loaded.ledger).total, '9007199254740993'); assert.equal(loaded.ledger.importedEvents.length, 0);
     const receive = { type: 'import.receive', mutationId: 'receive', payload: { id: 'event', source: 'sms', provider: 'Test', sourceId: 'MSG1', text: 'Thanh toán thành công số tiền 58.000 VND. Mã giao dịch: R1', receivedAt: '2026-10-10T01:00:00.000Z' } };
     loaded = await repo.mutate(receive, loaded.revision);

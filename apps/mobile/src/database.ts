@@ -30,7 +30,8 @@ CREATE TABLE imported_events(id TEXT PRIMARY KEY, version INTEGER NOT NULL CHECK
 CREATE INDEX imported_events_time ON imported_events(receivedAt DESC,id DESC);
 CREATE INDEX imported_events_source ON imported_events(source,provider,sourceId);
 CREATE INDEX imported_events_reference ON imported_events(provider,reference);
-` }
+` },
+  { version: 4, sql: `CREATE TABLE spending_data(id INTEGER PRIMARY KEY CHECK(id=1), value TEXT NOT NULL); INSERT INTO spending_data(id,value) VALUES(1,'{"catalog":[],"preferences":{"likedIds":[],"excludedIds":[],"excludedAllergens":[],"frequency":[]},"plans":[]}');` }
 ];
 const tables = [
   { key: 'wallets', table: 'wallets', columns: ['id', 'version', 'name', 'icon', 'openingBalance', 'openingAt', 'archived'] },
@@ -85,6 +86,9 @@ export class LedgerRepository {
     const wallets = await this.db.getAllAsync<{ budgetId: string; walletId: string }>('SELECT * FROM budget_wallets ORDER BY walletId');
     const categories = await this.db.getAllAsync<{ budgetId: string; categoryId: string }>('SELECT * FROM budget_categories ORDER BY categoryId');
     for (const b of s.budgets) { b.walletIds = wallets.filter(x => x.budgetId === b.id).map(x => x.walletId); b.categoryIds = categories.filter(x => x.budgetId === b.id).map(x => x.categoryId); }
+    const planning = await this.db.getFirstAsync<{ value: string }>('SELECT value FROM spending_data WHERE id=1');
+    if (!planning) throw new Error('Database thiếu dữ liệu kế hoạch. Giữ nguyên sổ để khôi phục tường minh.');
+    s.spending = JSON.parse(planning.value);
     const settings = Object.fromEntries((await this.db.getAllAsync<{ key: string; value: string }>('SELECT key,value FROM settings')).map(x => [x.key, x.value]));
     s.settings = { timezone: settings.timezone, onboarded: settings.onboarded === 'true' };
     const revision = Number(settings.revision); if (!Number.isSafeInteger(revision) || revision < 0) throw new Error('Phiên bản database không hợp lệ.');
@@ -111,6 +115,7 @@ export class LedgerRepository {
         }
       }
     }
+    if (!before || JSON.stringify(before.spending) !== JSON.stringify(s.spending)) await this.db.runAsync('INSERT INTO spending_data(id,value) VALUES(1,?) ON CONFLICT(id) DO UPDATE SET value=excluded.value', JSON.stringify(s.spending));
     await this.setting('timezone', s.settings.timezone); await this.setting('onboarded', String(s.settings.onboarded));
   }
   mutate(command: Command, expectedRevision: number): Promise<LoadedLedger> {
