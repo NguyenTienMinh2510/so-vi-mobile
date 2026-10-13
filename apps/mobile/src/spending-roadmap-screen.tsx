@@ -31,6 +31,7 @@ export function RoadmapScreen() {
   const mounted = useRef(true), generation = useRef(0), active = useRef(false), controller = useRef<AbortController | null>(null);
   const pinned = useRef<string | null>(null);
   const aiBusy = !['ready', 'missing', 'error'].includes(ai.phase);
+  const aiPhase = ({ missing: 'Chưa có mô hình', checking: 'Đang xác minh', downloading: 'Đang tải', importing: 'Đang nhập', ready: 'Sẵn sàng', loading: 'Đang nạp AI', inferring: 'Đang hiểu sở thích', stopping: 'Đang dừng', error: 'Chưa sẵn sàng' })[ai.phase];
   const cancel = () => { generation.current++; controller.current?.abort(); void spendingAi.cancel(); };
   const edit = () => { try { latest.current.lock.assertUnlocked(); if (latest.current.lock.locked || latest.current.lock.covered || AppState.currentState !== 'active') throw new Error('Mở khóa ứng dụng trước khi sửa.'); } catch (e) { setError(errorMessage(e)); return false; } cancel(); setDirty(true); setError(''); return true; };
   const updateDraft = (next: Draft) => { draftRef.current = next; setDraft(next); };
@@ -149,7 +150,7 @@ export function RoadmapScreen() {
     {!!busy && <><Text accessibilityLiveRegion="polite" style={styles.text}>{busy}</Text><Button title="Hủy thao tác" secondary disabled={busy === 'Đang lưu roadmap…'} onPress={cancel} /></>}
     {!!error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
     {!!ai.error && <Text accessibilityRole="alert" style={styles.error}>{ai.error}</Text>}
-    {!busy && !draft && <Text style={styles.helper}>{!spendingAiAvailable ? 'AI local cần bản iPhone riêng.' : ai.phase === 'ready' ? 'AI local sẵn sàng.' : `AI local: ${ai.phase === 'missing' ? 'chưa có mô hình' : ai.phase}.`}</Text>}
+    {!busy && !draft && <Text style={styles.helper}>{!spendingAiAvailable ? 'AI local cần bản iPhone riêng.' : `AI local: ${aiPhase}.`}</Text>}
     {draft?.warnings.map(warning => <Text key={warning} style={styles.advisory}>{warning}</Text>)}
     {plan && draft && <>
       <Card>
@@ -200,28 +201,33 @@ export function RoadmapScreen() {
         </Card></View>;
       })}</View>}
       {dirty && <Button title="Lưu roadmap" disabled={!canSave} onPress={save} />}
-      <Button title="Duyệt & sửa sở thích" secondary onPress={() => setConditions(v => !v)} />
+      <Pressable accessibilityRole="button" accessibilityLabel="Duyệt & sửa sở thích" accessibilityState={{ expanded: conditions }} onPress={() => setConditions(v => !v)} style={[styles.row, { minHeight: 44, paddingVertical: 8 }]}><Icon name="options-outline" /><Text style={[styles.secondary, { flex: 1 }]}>Sở thích ăn uống</Text><Icon name={conditions ? 'chevron-up' : 'chevron-down'} /></Pressable>
       {conditions && <Card><Text style={styles.heading}>{draft.mode === 'math' ? 'Điều kiện bộ tính' : 'Sở thích đang duyệt'}</Text><Text style={styles.secondary}>Thích: {plan.preferences.likedIds.map(id => draft.catalog.find(m => m.id === id)?.name ?? id).join(', ') || 'chưa chọn'}{`\n`}Không ăn: {plan.preferences.excludedIds.map(id => draft.catalog.find(m => m.id === id)?.name ?? id).join(', ') || 'chưa chọn'}</Text><Choice label="Món thích" dropdown multiple items={draft.catalog} selected={plan.preferences.likedIds} onSelect={id => changePreferences({ ...plan.preferences, likedIds: toggle(plan.preferences.likedIds, id) })} /><Choice label="Món không ăn" dropdown multiple items={draft.catalog} selected={plan.preferences.excludedIds} onSelect={id => changePreferences({ ...plan.preferences, excludedIds: toggle(plan.preferences.excludedIds, id) })} />{plan.preferences.frequency.map(f => <View key={f.mealId} style={{ gap: 8 }}><Text style={styles.text}>{draft.catalog.find(m => m.id === f.mealId)?.name}</Text><View style={styles.pair}><View style={styles.half}><Field label="Ít nhất / 7 ngày" keyboardType="number-pad" value={String(f.min)} onChangeText={v => changePreferences({ ...plan.preferences, frequency: plan.preferences.frequency.map(x => x.mealId === f.mealId ? { ...x, min: Number(v) } : x) })} /></View><View style={styles.half}><Field label="Tối đa / 7 ngày" keyboardType="number-pad" value={String(f.max)} onChangeText={v => changePreferences({ ...plan.preferences, frequency: plan.preferences.frequency.map(x => x.mealId === f.mealId ? { ...x, max: Number(v) } : x) })} /></View></View></View>)}<Text style={styles.helper}>Dị ứng/nguyên liệu chưa xác nhận: roadmap không chứng nhận an toàn ăn uống.</Text></Card>}
       <Button title="Cân lại ngân sách" secondary disabled={!!busy || aiBusy} onPress={() => rebalance()} />
     </>}
-    <Button title="Kế hoạch đã lưu & phạm vi chi" secondary onPress={() => setAdvanced(v => !v)} />
+    <Pressable accessibilityRole="button" accessibilityLabel="Kế hoạch đã lưu & phạm vi chi" accessibilityState={{ expanded: advanced }} onPress={() => setAdvanced(v => !v)} style={[styles.row, { minHeight: 44, paddingVertical: 8 }]}><Icon name="wallet-outline" /><Text style={[styles.secondary, { flex: 1 }]}>Đã lưu & phạm vi chi</Text><Icon name={advanced ? 'chevron-up' : 'chevron-down'} /></Pressable>
     {advanced && <Card>
       <Choice label="Mở roadmap đã lưu" dropdown items={store.ledger.spending.plans.map(p => ({ id: p.config.id, name: `${p.config.name} · ${p.config.startDay}` }))} selected={plan ? [plan.config.id] : []} onSelect={id => openGuarded(store.ledger.spending.plans.find(p => p.config.id === id)!)} />
-      <Choice label="Ví · bỏ trống = tất cả" dropdown multiple items={store.ledger.wallets} selected={scope.walletIds} onSelect={id => setScopeField('walletIds', toggle(scope.walletIds, id))} />
-      <Choice label="Danh mục chi · bỏ trống = tất cả" dropdown multiple items={store.ledger.categories.filter(c => c.kind === 'expense')} selected={scope.categoryIds} onSelect={id => setScopeField('categoryIds', toggle(scope.categoryIds, id))} />
+      <View style={styles.pair}><View accessibilityLabel="Ví · bỏ trống = tất cả" style={styles.half}><Choice label="Ví" dropdown multiple items={store.ledger.wallets} selected={scope.walletIds} onSelect={id => setScopeField('walletIds', toggle(scope.walletIds, id))} /></View><View accessibilityLabel="Danh mục chi · bỏ trống = tất cả" style={styles.half}><Choice label="Danh mục chi" dropdown multiple items={store.ledger.categories.filter(c => c.kind === 'expense')} selected={scope.categoryIds} onSelect={id => setScopeField('categoryIds', toggle(scope.categoryIds, id))} /></View></View>
+      <Text style={styles.helper}>Bỏ trống ví hoặc danh mục = tất cả.</Text>
       <Text style={styles.helper}>Đã chi theo phạm vi được trừ tự động. Khoản cố định chưa chi có thể liên kết giao dịch để tránh trừ hai lần.</Text>
       {scope.fixed.map((fixed, i) => <View key={fixed.id} style={{ gap: 8 }}><Field label={`Tên khoản cố định ${i + 1}`} value={fixed.name} onChangeText={v => setScopeField('fixed', scope.fixed.map(f => f.id === fixed.id ? { ...f, name: v } : f))} /><Field label={`Tiền khoản cố định ${i + 1}`} keyboardType="number-pad" value={fixed.amount} onChangeText={v => setScopeField('fixed', scope.fixed.map(f => f.id === fixed.id ? { ...f, amount: v } : f))} /><Choice label={`Liên kết khoản cố định ${i + 1}`} dropdown items={[{ id: '', name: 'Chưa chi' }, ...store.ledger.transactions.filter(t => t.kind === 'expense').map(t => ({ id: t.id, name: `${t.note || 'Khoản chi'} · ${formatMoney(t.amount)}` }))]} selected={[fixed.transactionId ?? '']} onSelect={id => setScopeField('fixed', scope.fixed.map(f => f.id === fixed.id ? { ...f, transactionId: id || null } : f))} /><Button title={`Bỏ khoản ${i + 1}`} secondary onPress={() => setScopeField('fixed', scope.fixed.filter(f => f.id !== fixed.id))} /></View>)}
       <Button title="Thêm khoản cố định" secondary disabled={scope.fixed.length >= 100} onPress={() => setScopeField('fixed', [...scope.fixed, { id: newId(), name: '', amount: '', transactionId: null }])} />
       {draft && <Button title="Roadmap mới" secondary disabled={!!busy || aiBusy} onPress={() => { if (!edit()) return; draftRef.current = null; setDraft(null); setPromptOpen(true); pinned.current = null; }} />}
     </Card>}
-    <Pressable accessibilityRole="button" accessibilityLabel="Thiết lập AI local" accessibilityState={{ expanded: modelOpen }} style={[styles.row, { minHeight: 44 }]} onPress={() => setModelOpen(v => !v)}><Icon name="hardware-chip-outline" /><Text style={styles.secondary}>AI local & bộ tính {modelOpen ? '−' : '+'}</Text></Pressable>
+    <Pressable accessibilityRole="button" accessibilityLabel="Thiết lập AI local" accessibilityState={{ expanded: modelOpen }} style={[styles.row, { minHeight: 44, paddingVertical: 8 }]} onPress={() => setModelOpen(v => !v)}><Icon name="hardware-chip-outline" /><View style={{ flex: 1 }}><Text style={styles.secondary}>AI local & bộ tính</Text><Text style={styles.secondary}>{SPENDING_MODEL.name}</Text></View><Icon name={modelOpen ? 'chevron-up' : 'chevron-down'} /></Pressable>
     {modelOpen && <Card>
       <Text style={styles.heading}>{SPENDING_MODEL.name}</Text><Text style={styles.helper}>Khoảng 3,44 GB · cần 3,8 GB trống. Tải/nhập file được kiểm tra đúng mô hình. Prompt và sổ không gửi đến nguồn thực đơn.</Text>
-      <Text style={styles.secondary}>{ai.phase}{ai.phase === 'downloading' ? ` · ${Math.round(ai.progress * 100)}%` : ''}</Text>
+      <Text style={styles.secondary}>{aiPhase}{ai.phase === 'downloading' ? ` · ${Math.round(ai.progress * 100)}%` : ''}</Text>
+      <View style={styles.pair}><View style={styles.half}>
       <Button title="Kiểm tra mô hình" secondary disabled={!!busy || aiBusy || !spendingAiAvailable} onPress={() => void operation('Kiểm tra AI local…', async request => { await spendingAi.checkModel(); check(request); })} />
+      </View><View style={styles.half}>
       <Button title="Tải mô hình miễn phí" secondary disabled={!!busy || aiBusy || !spendingAiAvailable} onPress={() => Alert.alert('Tải mô hình 3,44 GB?', 'Dùng Wi-Fi và giữ ứng dụng mở. Đây là tải file, không gửi sổ hay prompt.', [{ text: 'Để sau', style: 'cancel' }, { text: 'Tải', onPress: () => void operation('Đang tải mô hình…', async request => { await spendingAi.downloadModel(); check(request); }) }])} />
+      </View></View><View style={styles.pair}><View style={styles.half}>
       <Button title="Nhập file GGUF" secondary disabled={!!busy || aiBusy || !spendingAiAvailable} onPress={() => void operation('Nhập mô hình…', async request => { await spendingAi.importModel(); check(request); })} />
+      </View><View style={styles.half}>
       <Button title="Xóa file mô hình" secondary disabled={!!busy || aiBusy || !spendingAiAvailable} onPress={() => Alert.alert('Xóa mô hình?', 'Chỉ xóa file AI; giữ roadmap và sổ.', [{ text: 'Giữ', style: 'cancel' }, { text: 'Xóa mô hình', style: 'destructive', onPress: () => void operation('Xóa mô hình…', async request => { await spendingAi.deleteModel(); check(request); }) }])} />
+      </View></View>
       <Text style={styles.helper}>Bộ tính dùng món và giá từ nguồn, không dùng AI. Điều kiện ăn bắt buộc cần AI local duyệt; không tự bỏ điều kiện.</Text>
       <Button title="Tạo bằng bộ tính" secondary disabled={!!busy || aiBusy || !text.trim()} onPress={() => create(true)} />
     </Card>}
