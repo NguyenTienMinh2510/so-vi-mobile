@@ -8,7 +8,7 @@ import * as spending from '../src/spending.ts';
 import * as roadmap from '../src/spending-roadmap.ts';
 
 const now = '2026-10-13T04:00:00.000Z';
-function harness(available = true, unpriced = false) {
+function harness(available = true, unpriced = false, areaHistory = '') {
   const require = createRequire(import.meta.url), ts = require('typescript');
   let ledger = domain.emptyLedger(), revision = 0, locked = false, cursor = 0, pausedFetch = false, pausedSave = false;
   const slots: any[] = [], effects: (() => void)[] = [], commands: any[] = []; const intervals = new Map<number,()=>void>(); let clockMillis = Date.parse(now), timerId = 0; let identifier = 0, cancelCount = 0;
@@ -25,7 +25,7 @@ function harness(available = true, unpriced = false) {
     if (name === './domain') return domain;
     if (name === './spending') return spending;
     if (name === './spending-roadmap') return roadmap;
-    if (name === './spending-sources') return { loadOnlineMeals: async () => pausedFetch ? new Promise(resolve => { resolveFetch = resolve; }) : { meals: unpriced ? [] : catalog, warnings: [], venues: unpriced ? [{id:'osm-node-1',name:'Quán OSM không giá',address:'133 Hòa Hưng, Quận 10, TP.HCM',lat:10.78,lon:106.67,url:'https://www.openstreetmap.org/node/1',menuUrl:'https://restaurant.example/menu'}] : [] } };
+    if (name === './spending-sources') return { loadOnlineMeals: async () => pausedFetch ? new Promise(resolve => { resolveFetch = resolve; }) : { meals: unpriced ? [] : catalog, warnings: [], venues: unpriced ? [{id:'osm-node-1',name:'Quán OSM không giá',address:'133 Hòa Hưng, Quận 10, TP.HCM',lat:10.78,lon:106.67,url:'https://www.openstreetmap.org/node/1',menuUrl:'https://restaurant.example/menu',...(areaHistory ? { areaHistory } : {})}] : [] } };
     if (name === './app-lock') return { useAppLock: () => ({ locked, covered: false, assertUnlocked: () => { if (locked) throw new Error('locked'); } }) };
     if (name === './store') return { newId: () => `roadmap-${++identifier}`, errorMessage: (e: any) => e.message, useLedger: () => ({ ledger, revision, execute: async (command: any, expected: number) => { if (pausedSave) await new Promise<void>(resolve => { resolveSave = resolve; }); if (locked || expected !== revision) throw new Error('stale/locked'); commands.push(command); ledger = domain.applyCommand(ledger, command, { now }); revision++; return { ledger, revision }; } }) };
     if (name === './ui') return { Button: 'Button', Card: 'Card', Choice: 'Choice', Icon: 'Icon', Field: 'Field', Page: 'Page', styles: {}, colors: {}, toggle: (a: string[], v: string) => a.includes(v) ? a.filter(x => x !== v) : [...a, v] };
@@ -85,4 +85,20 @@ test('generation waiting shows real source and AI stages, cancel retains the inp
 test('OSM venues remain visible when exact dish prices are absent and no fake plan or expense is created',async()=>{
  const h=harness(false,true);h.node('Field','Mô tả roadmap').props.onChangeText('Quận 10,900k,7 ngày');h.node('Button','Tạo roadmap').props.onPress();await settle();assert.match(h.text(),/Quán OSM không giá/);assert.match(h.text(),/Chưa có giá món/);assert.match(h.text(),/OpenStreetMap/);assert.equal(h.commands.length,0);assert.ok(!h.render().some(v=>v.type==='Button'&&v.props.title==='Lưu roadmap'));
  h.node('Field','Mô tả roadmap').props.onChangeText('Hà Nội,900k,7 ngày');assert.ok(!h.text().includes('Quán OSM không giá'),'old area venues cleared after prompt edit');
+});
+
+test('daily journey shows proposed meal times and real places without changing money or stored schema',async()=>{
+ for(const [count,times] of [[1,['12:00']],[2,['12:00','18:30']],[3,['07:30','12:00','18:30']]] as const){
+  const h=harness(false);h.node('Field','Mô tả roadmap').props.onChangeText(`Quận 10,900k,7 ngày,${count} bữa/ngày`);h.node('Button','Tạo roadmap').props.onPress();await settle();
+  const text=h.text();assert.match(text,/Giờ dự kiến/);for(const time of times)assert.ok(text.includes(time),`missing proposed time ${time}`);assert.match(text,/Quận 10, TP.HCM/);assert.equal(h.commands.length,0);
+  h.node('Button','Chi tiết bữa 1').props.onPress();assert.match(h.text(),/giờ mở cửa/i);assert.ok(h.render().some(v=>v.type==='Button'&&v.props.title==='Mở nguồn giá'));
+  h.node('Choice','Xem roadmap').props.onSelect('week');for(const time of times.length===1?times:[times[0],times[times.length-1]])assert.ok(h.text().includes(time));
+  h.node('Button','Lưu roadmap').props.onPress();await settle();const plan=h.ledger().spending.plans[0];assert.equal(plan.meals.length,7*count);assert.equal(h.ledger().transactions.length,0);assert.ok(plan.meals.every(slot=>!Object.hasOwn(slot,'time')),'suggested times are display only');
+ }
+});
+
+test('historic area status remains clear even without prices and disappears after changing the requested area',async()=>{
+ const h=harness(false,true,'Quận 10 (đến 2025-06-30)');h.node('Field','Mô tả roadmap').props.onChangeText('Quận 10,900k,7 ngày');h.node('Button','Tạo roadmap').props.onPress();await settle();
+ assert.match(h.text(),/Khu vực cũ/);assert.match(h.text(),/Quận 10 \(đến 2025-06-30\)/);assert.match(h.text(),/Chưa có giá món/);assert.equal(h.commands.length,0);
+ h.node('Field','Mô tả roadmap').props.onChangeText('Hà Nội,900k,7 ngày');assert.ok(!h.text().includes('Khu vực cũ'));assert.equal(h.ledger().transactions.length,0);
 });

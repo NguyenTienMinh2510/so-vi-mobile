@@ -10,7 +10,7 @@ function harness(options:any={}){
  const ts=createRequire(import.meta.url)('typescript');const calls:any[]=[];let clock=Date.parse('2026-10-13T16:00:00Z');class Clock extends Date{static now(){return clock;} }
  const exports:any={};const fetch=async(url:any,init:any)=>{calls.push({url:String(url),init});if(options.pause)return new Promise(()=>{});if(options.status)return{ok:false,status:options.status,url:String(url),headers:{get:()=>null},text:async()=>''};
  const query=init?.body?decodeURIComponent(String(init.body).replace(/^data=/,'').replace(/\+/g,' ')):new URL(String(url)).searchParams.get('data')??'';
- const isVenue=query.includes('amenity'), isDistrict=query.includes('Quận 10');const mapped={type:'area',id:3600000200,tags:{boundary:'administrative',name:'Quận 10'},bounds};let body=isVenue?{elements:[...(options.mapped===false?[]:[mapped]),...(options.venues??[venue()])]}:{elements:options.areas??[{type:'relation',id:isDistrict?200:100,tags:{boundary:'administrative',name:isDistrict?'Quận 10':'Hồ Chí Minh'},bounds}]};if(options.remark&&isVenue)body={...body,remark:'runtime error: timeout'};const text=options.oversize?'x'.repeat(2*1024*1024+1):JSON.stringify(body);
+ const isVenue=query.includes('amenity'), isDistrict=query.includes('Quận 10');const mapped={type:'area',id:3600000200,tags:{boundary:'administrative',name:'Quận 10',...options.mappedTags},bounds};let body=isVenue?{elements:[...(options.mapped===false?[]:[mapped]),...(options.venues??[venue()])]}:{elements:options.areas??[{type:'relation',id:isDistrict?200:100,tags:{boundary:'administrative',name:isDistrict?'Quận 10':'Hồ Chí Minh'},bounds}]};if(options.remark&&isVenue)body={...body,remark:'runtime error: timeout'};const text=options.oversize?'x'.repeat(2*1024*1024+1):JSON.stringify(body);
  return{ok:true,status:200,url:options.redirect??String(url),headers:{get:()=>null},text:async()=>text};};
  runInNewContext(ts.transpileModule(readFileSync(new URL('../src/spending-osm.ts',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText,{exports,URL,AbortController,TextEncoder,TextDecoder,Date:Clock,fetch,console,setTimeout:(fn:any,ms:number)=>{if(ms<=1000)queueMicrotask(fn);return 1;},clearTimeout:()=>{},require:(id:string)=>{if(id.replace('.ts','')==='./spending-roadmap')return roadmap;throw Error(id);}});
  return{load:exports.loadOsmVenues,calls,tick:(ms:number)=>clock+=ms};
@@ -44,3 +44,29 @@ test('OSM untrusted query syntax and oversized area input cannot broaden a count
 test('missing mapped administrative area is an unresolved search, never cached as no restaurants',async()=>{const h=harness({mapped:false});await assert.rejects(()=>h.load('Quận 10, TP.HCM',new AbortController().signal));});
 
 test('OSM full address tags are preserved for matching a public menu to the exact venue',async()=>{const address='133 Hòa Hưng, Quận 10, Hồ Chí Minh';const h=harness({venues:[venue(1,{'addr:full':address,'addr:street':'','addr:housenumber':'','addr:district':'','addr:city':''})]});assert.equal((await h.load('Quận 10, TP.HCM',new AbortController().signal))[0].address,address);});
+
+test('Overpass requests identify the same real application and enforce a 30-second manual retry cooldown',async()=>{
+ for(const status of [406,429]){
+  const options={status},h=harness(options),signal=new AbortController().signal;
+  await assert.rejects(()=>h.load('Quận 10, TP.HCM',signal));assert.equal(h.calls.length,1);
+  assert.equal(h.calls[0].init.headers['User-Agent'],'SoVi-Mobile/0.1.0 (personal roadmap; https://github.com/NguyenTienMinh2510/so-vi-mobile)');
+  options.status=0;await assert.rejects(()=>h.load('Quận 10, TP.HCM',signal),/chờ|đợi/i);assert.equal(h.calls.length,1);
+  h.tick(29999);await assert.rejects(()=>h.load('Quận 10, TP.HCM',signal));assert.equal(h.calls.length,1);
+  h.tick(1);assert.equal((await h.load('Quận 10, TP.HCM',signal)).length,1);
+  assert.ok(h.calls.every(c=>c.init.headers['User-Agent']===h.calls[0].init.headers['User-Agent']));
+ }
+});
+
+test('verified former administrative boundaries resolve with explicit history while current boundaries take precedence',async()=>{
+ const tags={name:'Quận 10',type:'boundary',boundary:'historic','was:boundary':'administrative',end_date:'2025-06-30'};
+ const old={type:'relation',id:6228121,tags,bounds};
+ const h=harness({areas:[old],mappedTags:tags});const rows=await h.load('Quận 10',new AbortController().signal);
+ assert.equal(rows.length,1);assert.match(rows[0].areaHistory,/Quận 10/);assert.match(rows[0].areaHistory,/2025-06-30/);assert.equal(rows[0].price,undefined);assert.equal(h.calls.length,2);
+ const current=harness({areas:[old,{type:'relation',id:200,tags:{name:'Quận 10',boundary:'administrative'},bounds}]});const today=await current.load('Quận 10',new AbortController().signal);assert.equal(today[0].areaHistory,undefined);assert.ok(decodeURIComponent(current.calls[1].init.body).includes('relation(200)'));
+});
+
+test('historic regions fail closed for invalid or future dates, nonadministrative history, ambiguity or mismatched mapped history',async()=>{
+ const tags={name:'Quận 10',type:'boundary',boundary:'historic','was:boundary':'administrative',end_date:'2025-06-30'},old={type:'relation',id:6228121,tags,bounds};
+ for(const changed of [{end_date:'2025-02-30'},{end_date:'2099-01-01'},{end_date:''},{'was:boundary':'national_park'},{type:'multipolygon'}]){const h=harness({areas:[{...old,tags:{...tags,...changed}}],mappedTags:tags});await assert.rejects(()=>h.load('Quận 10',new AbortController().signal));assert.equal(h.calls.length,1);}
+ for(const options of [{areas:[old,{...old,id:6228122}],mappedTags:tags},{areas:[old],mappedTags:{...tags,end_date:'2025-06-29'}},{areas:[old],mappedTags:{boundary:'administrative',name:'Quận 10'}}]){const h=harness(options);await assert.rejects(()=>h.load('Quận 10',new AbortController().signal));}
+});
