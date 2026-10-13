@@ -11,6 +11,7 @@ test "$(xcodebuild -version | awk '/Xcode/{print $2}')" = "26.6"
 
 npm test
 npm run typecheck
+python3 scripts/check-model-verifier-memory.py
 build_root="$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/sovi-build.XXXXXX")"
 swiftc -swift-version 5 modules/so-vi-native/ios/NativeInboxQueue.swift tests/native-queue-check.swift -o "$build_root/queue-check"
 "$build_root/queue-check"
