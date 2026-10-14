@@ -40,6 +40,7 @@ export const styles = StyleSheet.create({
   barPlanned: { backgroundColor: colors.transfer, height: 8 },
   barFixed: { backgroundColor: colors.warning, height: 8 },
   barReserve: { backgroundColor: '#A78BFA', height: 8 },
+  listItem: { minHeight: 44, paddingVertical: 10, gap: 6, borderBottomWidth: 1, borderBottomColor: colors.border },
   dayMilestoneHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.border, marginBottom: 8 }
 });
 export function Icon({ name, color = colors.secondary, size = 22 }: { name: string; color?: ColorValue; size?: number }) { const known = Object.hasOwn(Ionicons.glyphMap, name) ? name : 'wallet'; return <Ionicons name={known as keyof typeof Ionicons.glyphMap} color={color} size={size} accessible={false} />; }
@@ -50,7 +51,14 @@ export function Page({ title, children, back = false, scroll = true }: { title: 
   const header = <View style={[styles.row, { padding: 16 }]}>{back && <Pressable onPress={() => router.canGoBack() ? router.back() : router.replace('/')} accessibilityRole="button" accessibilityLabel="Quay lại" style={{ minWidth: 44, minHeight: 44, justifyContent: 'center' }}><Icon name="arrow-back" color={colors.text} /></Pressable>}<Text accessibilityRole="header" style={styles.title}>{title}</Text></View>;
   return <SafeAreaView style={styles.page} edges={['top', 'left', 'right']}><KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>{header}{scroll ? <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>{children}</ScrollView> : children}</KeyboardAvoidingView></SafeAreaView>;
 }
-export function Card({ children }: { children: ReactNode }) { return <View style={styles.card}>{children}</View>; }
+export function Card({ children, compact = false }: { children: ReactNode; compact?: boolean }) { return <View style={compact ? [styles.listItem, { backgroundColor: 'transparent' }] : styles.card}>{children}</View>; }
+export function Disclosure({ title, children }: { title: string; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return <View style={{ gap: 8 }}><Pressable accessibilityRole="button" accessibilityLabel={title} accessibilityState={{ expanded: open }} onPress={() => setOpen(value => !value)} style={[styles.listItem, { minHeight: 44 }]}><View style={styles.spread}><Text style={styles.text}>{title}</Text><Icon name={open ? 'chevron-up' : 'chevron-down'} /></View></Pressable>{open && children}</View>;
+}
+export function MenuRow({ title, subtitle, icon, onPress }: { title: string; subtitle?: string; icon?: string; onPress: () => void }) {
+  return <Pressable accessibilityRole="button" accessibilityLabel={title} onPress={onPress} style={styles.listItem}><View style={styles.row}>{icon && <Icon name={icon} color={colors.accent} />}<View style={{ flex: 1, gap: 2 }}><Text style={styles.text}>{title}</Text>{subtitle && <Text style={styles.secondary}>{subtitle}</Text>}</View><Icon name="chevron-forward" size={18} /></View></Pressable>;
+}
 export function Field({ label, error, ...props }: TextInputProps & { label: string; error?: string }) { return <View style={{ gap: 6 }}><Text style={styles.text}>{label}</Text><TextInput accessibilityLabel={label} placeholderTextColor={colors.secondary} selectionColor={colors.accent} autoCorrect={false} {...props} style={[styles.input, props.multiline && { minHeight: 44, textAlignVertical: 'top' }, props.style]} />{error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}</View>; }
 export function Choice({ label, items, selected, onSelect, multiple = false, dropdown = false }: { label: string; items: { id: string; name: string; icon?: string }[]; selected: string[]; onSelect: (id: string) => void; multiple?: boolean; dropdown?: boolean }) {
   const [open, setOpen] = useState(false);
