@@ -2,7 +2,10 @@ import { money, parseMoneyInput, timestamp } from './domain.ts';
 import { validatePreferences, type MealOption, type Preferences } from './spending.ts';
 import { FOOD_KNOWLEDGE } from './food-knowledge.generated.ts';
 
-export const normalizeRoadmapText = (value: string) => value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/\s+/g, ' ').trim();
+export function normalizeRoadmapText(value: string, preferences = false): string {
+  const normalized = value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/\s+/g, ' ').trim();
+  return preferences ? normalized.replace(/(^|[,;.]\s*)(?:minh|em|toi|tui|anh|chi)\s+(?=thich\b|uu tien\b|khong an\b|khong thich\b|bo mon\b|loai tru\b|an\b)/g, '$1') : normalized;
+}
 export function assertRoadmapArea(area: string) {
   if (typeof area !== 'string' || !area.trim() || area.length > 200 || !/[a-z]/.test(normalizeRoadmapText(area)) || /[<>\/\\?=]|https?:|\b(?:api|javascript)\b/i.test(area)) throw new Error('Ghi rõ khu vực ở Việt Nam, ví dụ Quận 1, TP.HCM hoặc Ninh Kiều, Cần Thơ.');
 }
@@ -73,7 +76,7 @@ function assertFrequencyPeriods(text: string) {
 export function parseRoadmapPrompt(text: string, today: string) {
   if (typeof text !== 'string' || !text.trim() || text.length > 1000) throw new Error('Mô tả roadmap từ 1 đến 1.000 ký tự.');
   timestamp(`${today}T00:00:00.000Z`);
-  const clauses = promptClauses(text), normalized = clauses.map(normalizeRoadmapText).join(', ');
+  const clauses = promptClauses(text), normalized = clauses.map(value => normalizeRoadmapText(value)).join(', ');
   assertFrequencyPeriods(text);
   const areaParts = clauses.filter(part => !/\d+\s*(?:ngay|bua)|\d{4}-\d{2}-\d{2}|ngan sach|du phong|\d\s*(?:k|tr|trieu|nghin|ngan|vnd|dong|d)\b|thich|uu tien|khong|bo mon|loai tru|chi an|di ung|kieng|it nhat|toi da|dung\s*\d|bat buoc|tranh|han che|nguyen lieu|chay|vegan|halal|gluten|lactose|\bnau\b|suy nghi/.test(normalizeRoadmapText(part)));
   let area = areaParts.join(', '); assertRoadmapArea(area);
@@ -88,7 +91,7 @@ export function parseRoadmapPrompt(text: string, today: string) {
   if (duration.length > 1 || meals.length > 1) throw new Error('Số ngày hoặc số bữa đang có nhiều lựa chọn.');
   const days = Number(duration[0]?.[1] ?? 7), mealsPerDay = Number(meals[0]?.[1] ?? 3);
   if (days < 1 || days > 31 || mealsPerDay < 1 || mealsPerDay > 3) throw new Error('Chọn 1–31 ngày và 1–3 bữa/ngày.');
-  let rest = clauses.filter(part => !areaParts.includes(part)).map(normalizeRoadmapText).join(', ').replace(/\d{4}-\d{2}-\d{2}/g, '').replace(/\d+\s*ngay\b/g, (value, offset: number, original: string) => /(?:moi|mot|trong|hang|\/)\s*$/.test(original.slice(0, offset)) ? value : '').replace(/\d+\s*bua\s*(?:\/\s*ngay|moi ngay|mot ngay)/g, '');
+  let rest = clauses.filter(part => !areaParts.includes(part)).map(value => normalizeRoadmapText(value)).join(', ').replace(/\d{4}-\d{2}-\d{2}/g, '').replace(/\d+\s*ngay\b/g, (value, offset: number, original: string) => /(?:moi|mot|trong|hang|\/)\s*$/.test(original.slice(0, offset)) ? value : '').replace(/\d+\s*bua\s*(?:\/\s*ngay|moi ngay|mot ngay)/g, '');
   const matches = [...rest.matchAll(/(?:ngan sach\s*[:=]?\s*|du phong\s*[:=]?\s*)?[+-]?\d+(?:[., ]\d+)*\s*(?:trieu|nghin|ngan|vnd|dong|tr|k|đ|d(?=\s|,|$))?/g)].filter(m => /ngan sach|du phong|trieu|nghin|ngan|vnd|dong|tr|k|đ|\d\s*d(?:\s|,|$)/.test(m[0]));
   let budget: string | undefined, reserve = '0'; let reserves = 0;
   for (const match of matches) {
@@ -123,19 +126,18 @@ export function assertRoadmapFoodSafety(text: string, preferences?: Preferences)
 export const ROADMAP_AI_MEALS = 8;
 export function roadmapAiCatalog(text: string, catalog: MealOption[]): MealOption[] {
   assertFrequencyPeriods(text);
-  const required: MealOption[] = [], liked: MealOption[] = [], representatives: MealOption[] = [];
-  for (const clause of normalizeRoadmapText(text).split(/[,;]/).map(v => v.trim()).filter(Boolean)) {
+  const required: MealOption[] = [];
+  for (const clause of normalizeRoadmapText(text, true).split(/[,;.]/).map(v => v.trim()).filter(Boolean)) {
     const name = clause.replace(/^(?:an|thich|uu tien|khong an|khong thich|bo mon|loai tru)\s+/, '').replace(/\s*(?:it nhat|toi da|dung)\s*\d+.*/, '').trim();
     const matches = [...new Map(name.split(/\s+(?:va|hoac)\s+/).flatMap(part => matchCatalogDishes(part, catalog)).map(m => [m.id, m])).values()];
-    if (/^(?:thich|uu tien)\s+/.test(clause) && !/(?:it nhat|toi da|dung)\s*\d+/.test(clause)) { liked.push(...matches); if (matches[0]) representatives.push(matches[0]); }
-    else required.push(...matches);
+    required.push(...matches);
   }
-  const mustKeep = [...new Map([...required, ...representatives].map(m => [m.id, m])).values()];
+  const mustKeep = [...new Map(required.map(m => [m.id, m])).values()];
   if (mustKeep.length > ROADMAP_AI_MEALS) throw new Error('Điều kiện bắt buộc khớp hơn 8 món cho AI local. Dùng tên món cụ thể hơn; không bỏ món được yêu cầu.');
   const venues = [...new Set(catalog.map(m => m.priceSource))].map(source => catalog.filter(m => m.priceSource === source));
   const diverse: MealOption[] = [];
   for (let i = 0; i < Math.max(0, ...venues.map(menu => menu.length)); i++) for (const menu of venues) if (menu[i]) diverse.push(menu[i]);
-  return [...new Map([...mustKeep, ...liked, ...diverse].map(m => [m.id, m])).values()].slice(0, ROADMAP_AI_MEALS);
+  return [...new Map([...mustKeep, ...diverse].map(m => [m.id, m])).values()].slice(0, ROADMAP_AI_MEALS);
 }
 export function roadmapAiAliases(catalog: MealOption[]): MealOption[] {
   if (!Array.isArray(catalog) || catalog.length < 1 || catalog.length > ROADMAP_AI_MEALS || new Set(catalog.map(m => m.id)).size !== catalog.length) throw new Error('AI local cần 1–8 món có mã riêng.');
@@ -152,7 +154,7 @@ export function reviewRoadmapPreferences(text: string, proposed: Preferences, ca
   const suggestions = options.suggestions === true;
   validatePreferences(proposed, catalog); assertRoadmapFoodSafety(text, proposed);
   assertFrequencyPeriods(text);
-  const normalized = normalizeRoadmapText(text);
+  const normalized = normalizeRoadmapText(text, true);
   const clauses = normalized.split(/[,;.]/).map(x => x.trim()).filter(Boolean);
   const allowedLikes = new Set<string>(), allowedExclusions = new Set<string>(), requestedFrequency = new Set<string>();
   for (const clause of clauses) {
@@ -176,7 +178,7 @@ export function reviewRoadmapPreferences(text: string, proposed: Preferences, ca
     }
     const liked = clause.match(/^(?:thich|uu tien)\s+(.+)/);
     if (liked && !frequency) {
-      const found = matchCatalogDishes(liked[1], catalog);
+      const found = liked[1].split(/\s+(?:va|hoac)\s+/).flatMap(name => matchCatalogDishes(name, catalog));
       found.forEach(m => allowedLikes.add(m.id));
       if (suggestions && !found.length) continue;
       if (!found.length || !found.some(m => proposed.likedIds.includes(m.id))) throw new Error('AI chưa giữ món được thích. Sửa mô tả theo tên món có trong nguồn rồi thử lại.');

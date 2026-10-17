@@ -24,6 +24,7 @@ function harness(native = true) {
     if (name === 'expo-constants') return { default: { executionEnvironment: native ? 'standalone' : 'storeClient' }, ExecutionEnvironment: { StoreClient: 'storeClient' } };
     if (name === 'react-native') return { AppState: appState, Platform: { OS: 'ios' } };
     if (name === 'expo-file-system/legacy') return fs;
+    if (name === 'expo-keep-awake') return { activateKeepAwakeAsync: async () => {}, deactivateKeepAwake: () => {} };
     if (name === 'expo-document-picker') return { getDocumentAsync: async () => ({ canceled: false, assets: [{ uri: 'file:///picked/model.gguf', size: 3443763168 }] }) };
     if (name === './spending') return { parseAiPreferences };
     if (name === './spending-thinking') return thinking;
@@ -35,11 +36,11 @@ function harness(native = true) {
 const settle = async () => { for (let i = 0; i < 12; i++) await Promise.resolve(); };
 test('native filtered assistant content is the strict JSON boundary, raw output may contain thinking or EOS', async () => {
   const h = harness(); h.output({ text: '<think>private reasoning</think>' + JSON.stringify(result) + ' [end of text]', content: JSON.stringify(result) });
-  assert.equal(JSON.stringify(await h.ai.infer('Thích cơm', [meal])), JSON.stringify(result)); assert.ok(h.calls.includes('release'));
+  assert.equal(JSON.stringify(await h.ai.infer('Thích cơm', [meal])), JSON.stringify(result)); assert.ok(!h.calls.includes('release')); await h.ai.cancel(); assert.ok(h.calls.includes('release'));
 });
 test('empty, malformed, invalid or interrupted canonical content never falls back to valid raw text', async () => {
   for (const extra of [{content:''}, {content:'<think>bad</think>'}, {content:'{"likedIds":["unknown"],"excludedIds":[],"excludedAllergens":[],"frequency":[]}'}, {content:JSON.stringify(result),interrupted:true}, {content:JSON.stringify(result),truncated:true}, {content:JSON.stringify(result),stopped_limit:1}, {content:JSON.stringify(result),context_full:true}]) {
-    const h = harness(); h.output({text:JSON.stringify(result),...extra}); await assert.rejects(()=>h.ai.infer('Thích cơm',[meal])); assert.ok(h.calls.includes('release'));
+    const h = harness(); h.output({text:JSON.stringify(result),...extra}); await assert.rejects(()=>h.ai.infer('Thích cơm',[meal])); assert.ok(!h.calls.includes('release')); await h.ai.cancel(); assert.ok(h.calls.includes('release'));
   }
 });
 test('venue-name dish aliases reach the local model menu and stay bounded', async () => {
@@ -55,7 +56,7 @@ test('thinking mode enables Qwen reasoning with a larger bounded context and ret
   const request = { text: 'tiết kiệm', days: 7, mealsPerDay: 3, budget: '400000', reserve: '0', cooking: 'unspecified' as const, menu: [{ id: 'rice', name: 'Cơm', price: '12000', cook: false, breakfast: false, localVenues: 3 }] };
   const result = await h.ai.think(request, [meal]);
   assert.deepEqual(result.preferences.likedIds, ['rice']); assert.deepEqual(result.tips, ['Ăn cơm buổi trưa.']); assert.equal(result.reasoning, '12k mỗi bữa');
-  const [system, user] = h.prompts[0]; assert.match(system.content, /SUY NGHĨ/); assert.equal(h.completions[0].enable_thinking, true); assert.equal(h.completions[0].response_format, undefined); assert.equal(h.completions[0].n_predict, 1280); assert.match(user.content, /"trungBinhMoiBuaVND":"19047"/); assert.ok(h.calls.includes('release'));
+  const [system, user] = h.prompts[0]; assert.match(system.content, /SUY NGHĨ/); assert.equal(h.completions[0].enable_thinking, true); assert.equal(h.completions[0].response_format, undefined); assert.equal(h.completions[0].n_predict, 768); assert.match(user.content, /"trungBinhMoiBuaVND":"19047"/); assert.ok(!h.calls.includes('release')); await h.ai.cancel(); assert.ok(h.calls.includes('release'));
   for (const bad of [{ ...request, menu: [] }, { ...request, menu: [{ ...request.menu[0], price: '1' }] }, { ...request, cooking: 'maybe' }, { ...request, feedback: 'x'.repeat(501) }]) { const b = harness(); await assert.rejects(() => b.ai.think(bad as any, [meal])); assert.equal(b.prompts.length, 0); }
   const cut = harness(); cut.output({ text: '<think>…', content: '', stopped_limit: true }); await assert.rejects(() => cut.ai.think(request, [meal]), /chưa xong/);
   assert.match(user.content, /"thucDon":"rice\|Cơm\|12000\|ăn ngoài\|không sáng\|quán 3"/);
@@ -66,7 +67,7 @@ test('thinking time limit stops only the generation and reports an incomplete th
   const pending = h.ai.think(request, [meal]); for (let i = 0; i < 20 && !h.calls.includes('completion'); i++) await new Promise(resolve => setImmediate(resolve));
   assert.ok(h.calls.includes('completion'));
   assert.equal(h.timers.length, 1); h.timers[0]();
-  await assert.rejects(pending, /^Error: AI suy nghĩ chưa xong/); assert.ok(h.calls.includes('stop')); assert.ok(h.calls.includes('release'));
+  await assert.rejects(pending, /^Error: AI suy nghĩ chưa xong/); assert.ok(h.calls.includes('stop')); assert.ok(!h.calls.includes('release'));
   for (let i = 0; i < 5; i++) await new Promise(resolve => setImmediate(resolve));
-  assert.match(h.ai.state.error, /chưa xong/); assert.equal(await h.ai.checkModel(), true); // not stuck stopping: the fast mode can start immediately
+  assert.match(h.ai.state.error, /chưa xong/); assert.equal(await h.ai.checkModel(), true); await h.ai.cancel(); assert.ok(h.calls.includes('release')); // not stuck stopping: the fast mode can start immediately
 });

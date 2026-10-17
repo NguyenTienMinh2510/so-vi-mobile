@@ -20,9 +20,10 @@ function harness(entries: [string, number][], failure = '') {
   runInNewContext(code, { exports, console, setTimeout, clearTimeout, require: (name: string) => {
     if (name === 'expo') return { requireOptionalNativeModule: () => verifier };
     if (name === 'expo-constants') return { default: { executionEnvironment: 'standalone' }, ExecutionEnvironment: { StoreClient: 'storeClient' } };
-    if (name === 'react-native') return { Platform: { OS: 'ios' }, AppState: { currentState: 'active' } };
+    if (name === 'react-native') return { Platform: { OS: 'ios' }, AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) } };
     if (name === 'expo-file-system/legacy') return fs;
     if (name === 'expo-document-picker') return {};
+    if (name === 'expo-keep-awake') return { activateKeepAwakeAsync: async () => {}, deactivateKeepAwake: () => {} };
     if (name === './spending') return {};
     if (name === './spending-thinking') return thinking;
     throw Error('Unexpected module ' + name);

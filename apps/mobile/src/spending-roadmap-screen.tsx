@@ -95,10 +95,10 @@ export function RoadmapScreen() {
     let plan: SpendingPlan | null = null, thinkingFellBack = false; const warnings = [...source.warnings];
     if (thinks) try {
       setBusy('AI local đang suy nghĩ… iPhone 12 Pro Max thường 2–6 phút, giữ app mở');
-      const menu = thinkingMenu(parsed.area, catalog, meal => mealFitsSlot(meal, 0, 3)); let feedback: string | undefined, failure: unknown = null;
+      const deadline = spendingAi.thinkingDeadline(), menu = thinkingMenu(parsed.area, catalog, meal => mealFitsSlot(meal, 0, 3)); let feedback: string | undefined, failure: unknown = null;
       // One repair round: the exact planner explains why the AI's idea does not fit, the AI rethinks once.
       for (let attempt = 1; attempt <= 2 && !plan; attempt++) {
-        const result = await spendingAi.think({ text: parsed.preferenceText, days: parsed.days, mealsPerDay: parsed.mealsPerDay, budget: parsed.budget, reserve: parsed.reserve, cooking: parsed.cooking, menu, feedback }, thinkingAliases(catalog)); check(request, revision);
+        const result = await spendingAi.think({ text: parsed.preferenceText, days: parsed.days, mealsPerDay: parsed.mealsPerDay, budget: parsed.budget, reserve: parsed.reserve, cooking: parsed.cooking, menu, feedback }, thinkingAliases(catalog), deadline); check(request, revision);
         const proposed = restoreThinkingPreferences(result.preferences, catalog); reviewRoadmapPreferences(parsed.preferenceText, proposed, catalog, { suggestions: true });
         allowCooking = parsed.cooking === 'allow' || (parsed.cooking === 'unspecified' && result.allowCooking);
         setBusy('Bộ tính kiểm tra ý tưởng của AI…'); setWaiting(value => value ? { ...value, step: 2 } : value);
@@ -118,7 +118,7 @@ export function RoadmapScreen() {
       const proposed = await spendingAi.infer(preferenceText, roadmapAiAliases(aiCatalog), retrievedVenueContext(source.venues ?? []), aiCatalog.map(meal => dishNames(meal).filter(name => name !== normalizeRoadmapText(meal.name)).slice(0, 6)));
       check(request, revision); preferences = restoreRoadmapAiPreferences(proposed, aiCatalog); reviewRoadmapPreferences(parsed.preferenceText, preferences, catalog);
     } else if (parsed.preferenceText) {
-      const clauses = normalizeRoadmapText(parsed.preferenceText).split(/[,;]/).map(v => v.trim()).filter(Boolean);
+      const clauses = normalizeRoadmapText(parsed.preferenceText, true).split(/[,;]/).map(v => v.trim()).filter(Boolean);
       for (const clause of clauses) {
         const match = clause.match(/^(?:thich|uu tien)\s+(.+)$/); if (!match) throw new Error('Bộ tính chỉ hiểu món thích theo tên nguồn; sửa mô tả hoặc dùng AI local.');
         const found = matchCatalogDishes(match[1], catalog); if (!found.length) throw new Error('Nguồn chưa có món được thích. Sửa mô tả hoặc dùng AI local.'); preferences.likedIds.push(...found.map(m => m.id));

@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseRoadmapPrompt, reviewRoadmapPreferences, roadmapAiAliases, restoreRoadmapAiPreferences, roadmapAreaMatches } from '../src/spending-roadmap.ts';
+import { readFileSync } from 'node:fs';
+import { runInNewContext } from 'node:vm';
+import { parseRoadmapPrompt, normalizeRoadmapText, roadmapAiCatalog, matchCatalogDishes, reviewRoadmapPreferences, roadmapAiAliases, restoreRoadmapAiPreferences, roadmapAreaMatches } from '../src/spending-roadmap.ts';
 import { parseOnlineMenu, loadPublishedMeals } from '../src/spending-sources.ts';
 import { applyCommand, emptyLedger } from '../src/domain.ts';
 import { planSpending } from '../src/spending.ts';
@@ -108,4 +110,39 @@ test('unaccented and compact basic prompts separate area and numeric settings wi
 test('existing exclusions and hard food clauses remain preferences instead of becoming geography',()=>{
  for(const cue of ['bỏ món phở','loại trừ phở','bo mon pho','loai tru pho','chỉ ăn cơm','chi an com']){const p=parseRoadmapPrompt(`Quận 10,900k,7 ngày,${cue}`,day);assert.equal(p.area,'Quận 10, TP.HCM');assert.equal(p.preferenceText,cue);}
  const catalogue=parseOnlineMenu(html(),source,day);assert.throws(()=>reviewRoadmapPreferences('chỉ ăn cơm',{likedIds:[],excludedIds:[],excludedAllergens:[],frequency:[]},catalogue));
+});
+
+test('pronouns share normalization for shortlist, review and calculator without changing ordinary names', () => {
+  const template = parseOnlineMenu(html(), source, day)[0];
+  const catalog = Array.from({ length: 10 }, (_, i) => ({ ...template, id: `dish-${i}`, name: i === 8 ? 'Phở' : i === 9 ? 'Bún bò' : `Món ${i}` }));
+  const text = 'mình thích phở, em không ăn bún bò', proposed = { likedIds: ['dish-8'], excludedIds: ['dish-9'], excludedAllergens: [], frequency: [] };
+  const shortlist = roadmapAiCatalog(text, catalog); assert.equal(shortlist.length, 8); assert.ok(shortlist.some(m => m.id === 'dish-8')); assert.ok(shortlist.some(m => m.id === 'dish-9'));
+  assert.equal(reviewRoadmapPreferences(text, proposed, catalog), proposed);
+  for (const subject of ['mình', 'em', 'tôi', 'tui', 'anh', 'chị']) {
+    const preference = `${subject} thích phở`;
+    assert.equal(normalizeRoadmapText(preference, true), 'thich pho');
+    assert.ok(roadmapAiCatalog(preference, catalog).some(m => m.id === 'dish-8'));
+    reviewRoadmapPreferences(preference, { ...proposed, excludedIds: [] }, catalog);
+    reviewRoadmapPreferences(`${subject} không ăn bún bò`, { ...proposed, likedIds: [] }, catalog);
+    assert.throws(() => reviewRoadmapPreferences(preference, { ...proposed, likedIds: [], excludedIds: [] }, catalog), /giữ món/);
+  }
+  assert.equal(normalizeRoadmapText('Mình thích phở'), 'minh thich pho'); assert.equal(normalizeRoadmapText('Chị Hồng', true), 'chi hong');
+  const full = catalog.slice(0, 8).map(m => `tui thích ${m.name}`).join(', ');
+  assert.equal(roadmapAiCatalog(full, catalog).length, 8);
+  assert.throws(() => roadmapAiCatalog(`${full}, anh thích phở`, catalog), /hơn 8 món/);
+  const manyPho = catalog.map((m, i) => ({ ...m, name: `Phở loại ${i}` }));
+  assert.throws(() => roadmapAiCatalog('chị thích phở', manyPho), /hơn 8 món/);
+});
+
+test('actual calculator branch accepts each supported subject through the shared helper', () => {
+  const screen = readFileSync(new URL('../src/spending-roadmap-screen.tsx', import.meta.url), 'utf8');
+  const start = screen.indexOf('const clauses = normalizeRoadmapText(parsed.preferenceText'), end = screen.indexOf('preferences.likedIds = [...new Set(preferences.likedIds)];', start);
+  assert.ok(start >= 0 && end > start);
+  const logic = screen.slice(start, end + 'preferences.likedIds = [...new Set(preferences.likedIds)];'.length);
+  const catalog = [{ ...parseOnlineMenu(html(), source, day)[0], name: 'Phở' }];
+  for (const subject of ['mình', 'em', 'tôi', 'tui', 'anh', 'chị']) {
+    const preferences = { likedIds: [] };
+    runInNewContext(logic, { normalizeRoadmapText, matchCatalogDishes, parsed: { preferenceText: `${subject} thích phở` }, catalog, preferences });
+    assert.deepEqual(Array.from(preferences.likedIds), [catalog[0].id]);
+  }
 });
