@@ -3,9 +3,9 @@
 | Loại task | Agent | Model | Mức suy luận |
 |---|---|---|---|
 | Hỏi nhanh, sửa 1-2 dòng, đổi tên, format | Claude | Haiku 5.5 | Thấp |
-| Điều phối, giao task, chạy test | Codex chat | Model nhỏ | Thấp |
-| Code thường, API, hàm, CRUD, test | Codex worker | Model Codex chính | Trung bình |
-| Giao diện, HTML/CSS, smoke test UI | Antigravity | Gemini Flash | Mặc định |
+| Điều phối, giao task, chạy test | Codex chat | Luna 6 (`gpt-6-luna`) | Trung bình |
+| Code thường, API, hàm, CRUD, test | Codex worker | Codex mặc định (`gpt-6.1-sol`) | Trung bình (`--effort medium`) |
+| Giao diện, HTML/CSS, smoke test UI | Antigravity | Gemini 3.8 Flash | Cao |
 | Giao diện phức tạp | Antigravity | Gemini Pro | Mặc định |
 | Review code, QA, brief, kế hoạch, viết tài liệu | Claude | Sonnet 5.5 | Trung bình |
 | Debug lỗi khó, bug lặp | Codex worker | Model mạnh nhất | Cao |
