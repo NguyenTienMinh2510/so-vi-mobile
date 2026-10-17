@@ -1,7 +1,7 @@
 type Env = { APP_TOKEN: string; AI: { run(model: string, input: Record<string, unknown>): Promise<any> } };
-// Official catalog: reasoning https://developers.cloudflare.com/workers-ai/models/qwq-32b/
+// Official catalog: reasoning https://developers.cloudflare.com/workers-ai/models/qwen3-30b-a3b-fp8/
 // Small fast model https://developers.cloudflare.com/workers-ai/models/llama-3.1-8b-instruct-fp8/
-export const MODELS = { think: '@cf/qwen/qwq-32b', fast: '@cf/meta/llama-3.1-8b-instruct-fp8' };
+export const MODELS = { think: '@cf/qwen/qwen3-30b-a3b-fp8', fast: '@cf/meta/llama-3.1-8b-instruct-fp8' };
 const LIMIT = 32 * 1024;
 async function authorized(header: string | null, secret: string) {
   // Fixed-size digests avoid a length-dependent comparison; no early exit on differing bytes.
@@ -34,13 +34,16 @@ export default {
     } catch { return Response.json({ error: 'BAD_REQUEST' }, { status: 400 }); }
     try {
       const mode = body.mode as keyof typeof MODELS;
-      const output = await env.AI.run(MODELS[mode], { messages: body.messages, max_tokens: mode === 'think' ? 2048 : 512, stream: false, ...(body.schema ? mode === 'think' ? { guided_json: body.schema } : { response_format: { type: 'json_schema', json_schema: body.schema } } : {}) });
+      const output = await env.AI.run(MODELS[mode], { messages: body.messages, max_tokens: mode === 'think' ? 4096 : 512, stream: false, ...(body.schema ? { response_format: { type: 'json_schema', json_schema: body.schema } } : {}) });
       const message = output?.choices?.[0]?.message;
       let content = output?.response ?? message?.content ?? output?.content;
       if (body.schema && content && typeof content === 'object' && !Array.isArray(content)) content = JSON.stringify(content);
       if (typeof content !== 'string') throw Error('OUTPUT');
-      const reasoning = [output?.reasoning, output?.reasoning_content, message?.reasoning_content, ...Array.from(content.matchAll(/<think>([\s\S]*?)<\/think>/g), m => m[1])].filter(v => typeof v === 'string' && v.trim()).join('\n');
-      content = content.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+      const end = content.lastIndexOf('</think>');
+      if (end < 0 && content.includes('<think>')) return Response.json({ error: 'AI_TRUNCATED' }, { status: 502 });
+      const taggedReasoning = end < 0 ? '' : content.slice(0, end).replace(/^\s*<think>/, '').trim();
+      const reasoning = [output?.reasoning, output?.reasoning_content, message?.reasoning, message?.reasoning_content, taggedReasoning].filter(v => typeof v === 'string' && v.trim()).join('\n');
+      content = (end < 0 ? content : content.slice(end + '</think>'.length)).trim();
       if (!content || content.includes('<think>')) throw Error('OUTPUT');
       return Response.json({ content, reasoning });
     } catch (error: any) {

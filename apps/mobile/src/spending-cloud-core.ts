@@ -14,7 +14,7 @@ export async function completeCloud(settings: CloudSettings, mode: 'fast' | 'thi
   const abort = () => controller.abort();
   if (signal?.aborted) throw Object.assign(Error('Đã hủy AI.'), { name: 'AbortError' });
   signal?.addEventListener('abort', abort, { once: true });
-  const timer = setTimeout(abort, mode === 'think' ? 90000 : 20000);
+  const timer = setTimeout(abort, mode === 'think' ? 150000 : 20000);
   try {
     const response = await fetch(`${config.url}/v1/complete`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.token}` }, body: JSON.stringify({ mode, messages: prompt.messages, ...(prompt.schema ? { schema: prompt.schema } : {}) }), signal: controller.signal, redirect: 'error' });
     if (!response.ok) throw cloudUnavailable();

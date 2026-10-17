@@ -66,11 +66,16 @@ test('network errors, quota, upstream errors and malformed responses are recogni
 });
 test('both cloud deadlines abort stalled fetch and clear timers', async t => {
   const original = globalThis.fetch; t.mock.timers.enable({ apis: ['setTimeout'] });
-  globalThis.fetch = async (_url, init) => new Promise((_resolve, reject) => init?.signal?.addEventListener('abort', () => reject(Error('timeout'))));
+  let fetchSignal: AbortSignal | undefined;
+  globalThis.fetch = async (_url, init) => {
+    fetchSignal = init?.signal ?? undefined;
+    return new Promise((_resolve, reject) => fetchSignal?.addEventListener('abort', () => reject(Error('timeout'))));
+  };
   try {
-    for (const [mode, ms] of [['fast', 20000], ['think', 90000]] as const) {
+    for (const [mode, ms] of [['fast', 20000], ['think', 150000]] as const) {
       const pending = assert.rejects(completeCloud(settings, mode, { messages: [] }), { code: 'CLOUD_UNAVAILABLE' });
-      t.mock.timers.tick(ms); await pending;
+      t.mock.timers.tick(ms - 1); assert.equal(fetchSignal?.aborted, false);
+      t.mock.timers.tick(1); await pending; assert.equal(fetchSignal?.aborted, true);
     }
   } finally { globalThis.fetch = original; t.mock.timers.reset(); }
 });
