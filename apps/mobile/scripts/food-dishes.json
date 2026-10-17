@@ -1,0 +1,27 @@
+{
+  "note": "Tên gọi món dùng để đếm quán có tên chứa món. Chỉ là tín hiệu tên quán, không phải bằng chứng thực đơn.",
+  "dishes": {
+    "banh-mi": {"names": ["bánh mì", "bánh mỳ"], "ascii": ["banh mi"]},
+    "pho": {"names": ["phở"], "ascii": ["pho"]},
+    "bun-bo": {"names": ["bún bò", "bún bò huế"], "ascii": ["bun bo"]},
+    "hu-tieu": {"names": ["hủ tiếu", "hủ tíu", "hủ tiếu nam vang", "hủ tiếu mì"], "ascii": ["hu tieu", "hu tiu"]},
+    "xoi": {"names": ["xôi"], "ascii": ["xoi"]},
+    "banh-cuon": {"names": ["bánh cuốn"], "ascii": ["banh cuon"]},
+    "chao": {"names": ["cháo", "cháo lòng", "cháo ếch", "cháo vịt"], "ascii": []},
+    "bun-rieu": {"names": ["bún riêu"], "ascii": ["bun rieu"]},
+    "com-tam": {"names": ["cơm tấm", "cơm sườn"], "ascii": ["com tam"]},
+    "com-ga": {"names": ["cơm gà", "gà xối mỡ"], "ascii": ["com ga"]},
+    "bun-thit-nuong": {"names": ["bún thịt nướng"], "ascii": ["bun thit nuong"]},
+    "mi-quang": {"names": ["mì quảng", "mỳ quảng"], "ascii": ["mi quang"]},
+    "banh-canh": {"names": ["bánh canh", "bánh canh cua", "bánh canh cá"], "ascii": ["banh canh"]},
+    "com-ca": {"names": ["cơm cá", "cá kho"], "ascii": []},
+    "bun-cha": {"names": ["bún chả", "bún chả hà nội"], "ascii": ["bun cha"]},
+    "mi-xao": {"names": ["mì xào", "mỳ xào"], "ascii": ["mi xao"]},
+    "banh-xeo": {"names": ["bánh xèo"], "ascii": ["banh xeo"]},
+    "bun-dau": {"names": ["bún đậu", "bún đậu mắm tôm"], "ascii": ["bun dau"]},
+    "bo-ne": {"names": ["bò né"], "ascii": ["bo ne"]},
+    "bun-ca": {"names": ["bún cá", "bún chả cá"], "ascii": ["bun ca"]},
+    "bun-mam": {"names": ["bún mắm"], "ascii": ["bun mam"]},
+    "banh-uot": {"names": ["bánh ướt"], "ascii": ["banh uot"]}
+  }
+}

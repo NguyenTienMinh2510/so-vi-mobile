@@ -1,0 +1,15 @@
+node_modules/
+*.log
+.env
+.env.*
+!.env.example
+*.eml
+.ai-automation-service.lock
+
+.automation/
+.playwright-cli/
+artifacts/
+apps/mobile/dist-ios/
+apps/mobile/dist-food-verification/
+apps/mobile/.expo/
+*.ipa

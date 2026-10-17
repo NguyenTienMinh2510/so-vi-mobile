@@ -1,0 +1,67 @@
+name: Unsigned iOS Release
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Build app or repack the verified IPA launcher name
+        type: choice
+        default: build
+        options:
+          - build
+          - repack
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: unsigned-ios-release
+  cancel-in-progress: false
+jobs:
+  build:
+    if: ${{ inputs.mode == 'build' }}
+    runs-on: macos-26
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: apps/mobile
+    env:
+      CI: '1'
+      EXPO_NO_TELEMETRY: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Check and build unsigned arm64 Release
+        run: bash scripts/build-ios-unsigned.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: so-vi-unsigned-ios
+          path: apps/mobile/build-artifacts/so-vi-unsigned.ipa*
+          if-no-files-found: error
+          retention-days: 1
+  repack:
+    if: ${{ inputs.mode == 'repack' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: so-vi-unsigned-ios
+          run-id: 38077015484
+          github-token: ${{ github.token }}
+          path: original-ipa
+      - name: Change only the verified app launcher name
+        run: python3 apps/mobile/scripts/repack-ios-name.py original-ipa/so-vi-unsigned.ipa namefix-ipa/so-vi-unsigned-namefix.ipa
+      - uses: actions/upload-artifact@v4
+        with:
+          name: so-vi-unsigned-ios-namefix
+          path: namefix-ipa/so-vi-unsigned-namefix.ipa*
+          if-no-files-found: error
+          retention-days: 1
