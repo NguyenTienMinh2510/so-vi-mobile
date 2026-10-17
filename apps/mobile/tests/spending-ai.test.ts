@@ -33,8 +33,8 @@ function harness(native = true) {
   };
   const fs = { documentDirectory: 'file:///Documents/', getFreeDiskStorageAsync: async () => 10_000_000_000, makeDirectoryAsync: async () => {}, getInfoAsync: async (uri: string) => ({ exists: files.has(uri) }), deleteAsync: async (uri: string) => { calls.push(`delete:${uri}`); files.delete(uri); }, copyAsync: async ({ to }: any) => { files.add(to); }, createDownloadResumable: (_: string, uri: string) => ({ downloadAsync: async () => { calls.push('download'); files.add(uri); return { status: 200 }; }, cancelAsync: async () => { calls.push('cancel-download'); } }) };
   const verifier = { verifyModelAsync: async () => { calls.push('verify'); if (!verification) throw new Error('corrupt model'); return true; }, promoteModelAsync: async () => { if (failMove) throw new Error('move failed'); files.delete('file:///Documents/SoViAI/model.part'); files.add('file:///Documents/SoViAI/model.gguf'); } };
-  let stateListener: ((state: string) => void) | undefined;
-  const appState: any = { currentState: 'active', addEventListener: (_: string, listener: (state: string) => void) => { stateListener = listener; return { remove() {} }; } }; const exports: any = {};
+  const stateListeners: Record<string, (state: string) => void> = {};
+  const appState: any = { currentState: 'active', addEventListener: (event: string, listener: (state: string) => void) => { stateListeners[event] = listener; return { remove() {} }; } }; const exports: any = {};
   runInNewContext(code, { exports, console, Error, Date: class extends Date { static now() { return now; } },
     setTimeout: (callback: () => void, ms: number) => { const timer = { callback, ms, cleared: false }; timers.push(timer); return timer; }, clearTimeout: (timer: Timer) => { timer.cleared = true; }, require: (name: string) => {
     if (name === 'expo') return { requireOptionalNativeModule: () => native ? verifier : null };
@@ -53,7 +53,8 @@ function harness(native = true) {
     pauseOutput: (stopSettles = true) => { pauseOutput = true; autoStop = stopSettles; }, finishOutput: () => { assert.ok(resolveOutput); pauseOutput = false; resolveOutput({ text: JSON.stringify(result) }); }, output: (text: string) => { output = text; },
     pauseRelease: () => { pauseRelease = true; }, finishRelease: () => { assert.ok(resolveRelease); pauseRelease = false; resolveRelease(); }, failRelease: () => { releaseError = true; }, failStop: () => { stopError = true; }, failWake: () => { wakeError = true; },
     advance: (ms: number) => { now += ms; }, tokens: (n: number) => { tokenCount = n; }, failCompletion: () => { completionError = true; },
-    changeState: (state: string) => { appState.currentState = state; stateListener?.(state); },
+    changeState: (state: string) => { appState.currentState = state; stateListeners.change?.(state); },
+    memoryWarning: () => { stateListeners.memoryWarning?.(''); },
     fire: (ms: number) => { const timer = timers.findLast(t => t.ms === ms && !t.cleared); assert.ok(timer, `timer ${ms}`); timer.cleared = true; timer.callback(); }
   };
 }
@@ -180,4 +181,21 @@ test('actual screen loop shares its deadline and enters the fast fallback when t
   });
   assert.equal(preview.thinkingFellBack, true); assert.equal(JSON.stringify(preview.preferences), JSON.stringify(result)); assert.equal(preview.warnings.length, 1);
   assert.deepEqual(deadlines, [241000, 241000]); assert.deepEqual(h.completions.map(c => c.enable_thinking), [true, false]); assert.equal(count(h, 'load'), 1);
+});
+
+test('memory warning releases idle context once and clears its idle timer', async () => {
+  const h = harness(); await h.ai.infer('Thích cơm', [meal]); h.pauseRelease();
+  h.memoryWarning(); h.memoryWarning(); assert.equal(count(h, 'release'), 1);
+  assert.ok(h.timers.filter(t => t.ms === 30000).every(t => t.cleared));
+  const next = h.ai.infer('Thích cơm', [meal]); await settle(); assert.equal(count(h, 'load'), 1);
+  h.finishRelease(); await next; assert.equal(count(h, 'released'), 1); assert.equal(count(h, 'load'), 2);
+});
+
+test('memory warning leaves active native loading and completion untouched', async () => {
+  const h = harness(); h.pauseLoad(); h.pauseOutput(false);
+  const pending = h.ai.infer('Thích cơm', [meal]); await settle(); h.memoryWarning();
+  assert.equal(count(h, 'release'), 0); assert.equal(count(h, 'stop'), 0);
+  h.finishLoad(); await settle(); assert.equal(count(h, 'completion'), 1); h.memoryWarning();
+  assert.equal(count(h, 'release'), 0); assert.equal(count(h, 'stop'), 0);
+  h.finishOutput(); await pending; assert.equal(count(h, 'release'), 0);
 });

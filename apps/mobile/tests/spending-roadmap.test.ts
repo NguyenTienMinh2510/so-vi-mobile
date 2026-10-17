@@ -131,7 +131,7 @@ test('pronouns share normalization for shortlist, review and calculator without 
   assert.equal(roadmapAiCatalog(full, catalog).length, 8);
   assert.throws(() => roadmapAiCatalog(`${full}, anh thích phở`, catalog), /hơn 8 món/);
   const manyPho = catalog.map((m, i) => ({ ...m, name: `Phở loại ${i}` }));
-  assert.throws(() => roadmapAiCatalog('chị thích phở', manyPho), /hơn 8 món/);
+  assert.equal(roadmapAiCatalog('chị thích phở', manyPho).length, 8);
 });
 
 test('actual calculator branch accepts each supported subject through the shared helper', () => {
@@ -145,4 +145,32 @@ test('actual calculator branch accepts each supported subject through the shared
     runInNewContext(logic, { normalizeRoadmapText, matchCatalogDishes, parsed: { preferenceText: `${subject} thích phở` }, catalog, preferences });
     assert.deepEqual(Array.from(preferences.likedIds), [catalog[0].id]);
   }
+});
+
+test('broad likes truncate to eight and review accepts any retained liked dish', () => {
+  const template = parseOnlineMenu(html(), source, day)[0];
+  const catalog = Array.from({ length: 12 }, (_, i) => ({ ...template, id: `bun-${i}`, name: `Bún loại ${i}` }));
+  const shortlist = roadmapAiCatalog('mình thích bún', catalog);
+  assert.equal(shortlist.length, 8); assert.ok(shortlist.every(m => m.name.startsWith('Bún')));
+  for (const meal of shortlist) {
+    const proposed = { likedIds: [meal.id], excludedIds: [], excludedAllergens: [], frequency: [] };
+    assert.equal(reviewRoadmapPreferences('mình thích bún', proposed, catalog), proposed);
+  }
+});
+
+test('mandatory dishes precede likes while each liked clause keeps a representative', () => {
+  const template = parseOnlineMenu(html(), source, day)[0];
+  const catalog = Array.from({ length: 12 }, (_, i) => ({ ...template, id: `dish-${i}`, name: i < 9 ? `Bún loại ${i}` : i === 9 ? 'Phở' : i === 10 ? 'Xôi' : 'Cơm' }));
+  const text = 'thích bún, thích phở, không ăn xôi, cơm đúng 2 lần mỗi tuần';
+  const shortlist = roadmapAiCatalog(text, catalog);
+  assert.equal(shortlist.length, 8); assert.deepEqual(shortlist.slice(0, 2).map(m => m.id), ['dish-10', 'dish-11']);
+  assert.ok(shortlist.some(m => m.name.startsWith('Bún'))); assert.ok(shortlist.some(m => m.name === 'Phở'));
+  const proposed = { likedIds: [shortlist.find(m => m.name.startsWith('Bún'))!.id, 'dish-9'], excludedIds: ['dish-10'], excludedAllergens: [], frequency: [{ mealId: 'dish-11', min: 2, max: 2 }] };
+  assert.equal(reviewRoadmapPreferences(text, proposed, catalog), proposed);
+});
+
+test('exclusion or frequency matching more than eight dishes still rejects', () => {
+  const template = parseOnlineMenu(html(), source, day)[0];
+  const catalog = Array.from({ length: 9 }, (_, i) => ({ ...template, id: `bun-${i}`, name: `Bún loại ${i}` }));
+  for (const text of ['không ăn bún', 'bún đúng 2 lần mỗi tuần']) assert.throws(() => roadmapAiCatalog(text, catalog), /hơn 8 món/);
 });

@@ -32,7 +32,10 @@ class SpendingAi {
   private ready = false;
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
   private releaseRequest: Promise<void> | null = null;
-  constructor() { AppState.addEventListener('change', state => { if (state !== 'active') void this.cancel(); }); }
+  constructor() {
+    AppState.addEventListener('change', state => { if (state !== 'active') void this.cancel(); });
+    AppState.addEventListener('memoryWarning', () => { if (!this.active && !this.stopRequest) { this.clearIdle(); void this.releaseContext(); } });
+  }
   thinkingDeadline() { return Date.now() + THINKING_LIMITS.totalMs; }
   private clearIdle() { if (this.idleTimer !== null) clearTimeout(this.idleTimer); this.idleTimer = null; }
   private releaseContext(message = 'Chưa giải phóng được AI. Đóng và mở lại ứng dụng trước khi dùng hoặc xóa mô hình.') {

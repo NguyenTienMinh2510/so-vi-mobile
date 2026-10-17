@@ -126,18 +126,21 @@ export function assertRoadmapFoodSafety(text: string, preferences?: Preferences)
 export const ROADMAP_AI_MEALS = 8;
 export function roadmapAiCatalog(text: string, catalog: MealOption[]): MealOption[] {
   assertFrequencyPeriods(text);
-  const required: MealOption[] = [];
+  const required: MealOption[] = [], liked: MealOption[][] = [];
   for (const clause of normalizeRoadmapText(text, true).split(/[,;.]/).map(v => v.trim()).filter(Boolean)) {
     const name = clause.replace(/^(?:an|thich|uu tien|khong an|khong thich|bo mon|loai tru)\s+/, '').replace(/\s*(?:it nhat|toi da|dung)\s*\d+.*/, '').trim();
     const matches = [...new Map(name.split(/\s+(?:va|hoac)\s+/).flatMap(part => matchCatalogDishes(part, catalog)).map(m => [m.id, m])).values()];
-    required.push(...matches);
+    if (/^(?:khong an|khong thich|bo mon|loai tru)\s+/.test(clause) || /(?:it nhat|toi da|dung)\s*\d+/.test(clause)) required.push(...matches);
+    else if (/^(?:thich|uu tien)\s+/.test(clause) && matches.length) liked.push(matches);
   }
   const mustKeep = [...new Map(required.map(m => [m.id, m])).values()];
   if (mustKeep.length > ROADMAP_AI_MEALS) throw new Error('Điều kiện bắt buộc khớp hơn 8 món cho AI local. Dùng tên món cụ thể hơn; không bỏ món được yêu cầu.');
+  for (const matches of liked) if (!matches.some(m => mustKeep.some(kept => kept.id === m.id))) mustKeep.push(matches[0]);
+  if (mustKeep.length > ROADMAP_AI_MEALS) throw new Error('Điều kiện và món đại diện cho sở thích cần hơn 8 món cho AI local. Dùng ít điều kiện hơn.');
   const venues = [...new Set(catalog.map(m => m.priceSource))].map(source => catalog.filter(m => m.priceSource === source));
   const diverse: MealOption[] = [];
   for (let i = 0; i < Math.max(0, ...venues.map(menu => menu.length)); i++) for (const menu of venues) if (menu[i]) diverse.push(menu[i]);
-  return [...new Map([...mustKeep, ...diverse].map(m => [m.id, m])).values()].slice(0, ROADMAP_AI_MEALS);
+  return [...new Map([...mustKeep, ...liked.flat(), ...diverse].map(m => [m.id, m])).values()].slice(0, ROADMAP_AI_MEALS);
 }
 export function roadmapAiAliases(catalog: MealOption[]): MealOption[] {
   if (!Array.isArray(catalog) || catalog.length < 1 || catalog.length > ROADMAP_AI_MEALS || new Set(catalog.map(m => m.id)).size !== catalog.length) throw new Error('AI local cần 1–8 món có mã riêng.');
