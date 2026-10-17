@@ -32,9 +32,9 @@ Mọi agent đọc file này trước khi làm việc. Chọn model theo `MODELS
 - Không bỏ qua hộp thoại xin quyền.
 
 ## Ghi chú theo project (người dùng điền)
-- Stack: `<điền>`
-- Lệnh chạy: `<điền>`
-- Lệnh test: `<điền>`
-- Phạm vi Codex worker: `<thư mục/module>`
-- Phạm vi Antigravity: `<thư mục giao diện>`
+- Stack: Expo 57 / React Native (iOS), AI local llama.rn 0.13.0-rc.7 + Qwen3.5-4B Q5_K_M
+- Lệnh chạy: `cd apps/mobile && npx expo start` (AI local chỉ chạy trên bản build iPhone, không chạy Expo Go)
+- Lệnh test: `cd apps/mobile && npm test` (baseline 2026-10-18: 255/258 pass; 3 fail sẵn do CRLF/Xcode trên Windows)
+- Phạm vi Codex worker: `apps/mobile/src/spending-ai.ts`, `spending-thinking.ts`, `spending-roadmap.ts`, `apps/mobile/tests/`
+- Phạm vi Antigravity: `apps/mobile/src/*-screen.tsx`
 - Điều tuyệt đối không làm: `<điền>`
