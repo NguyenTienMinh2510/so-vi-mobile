@@ -38,3 +38,28 @@ AI vẫn phải tự suy luận, không thay bằng luật cứng. Bộ tính v�
 
 ## Cách kiểm tra
 `cd apps/mobile && npm test`, review `git diff main..fix/local-ai-thinking`. Trên máy thật: chạy thinking 3 lần liền với màn hình để tự khóa, rồi để luôn sáng.
+
+---
+
+# Giai đoạn 2 (2026-10-18): chuyển sang AI trên mạng
+
+## Kết quả thử trên máy thật (IPA run 39062178132)
+- Chế độ nhanh, câu "quận 10, thích ăn phở, 700k trong 7 ngày": báo "AI chưa trả về sở thích hợp lệ…". Lỗi đến từ `parseAiPreferences`, chuỗi `content` không phải JSON. Rất có thể `content` rỗng còn JSON nằm ở `text`.
+- "Suy nghĩ kỹ" vẫn crash. Giả thuyết C2 chưa đúng hoặc chưa đủ.
+
+## Quyết định của người dùng
+- AI chạy trên **Cloudflare Workers AI** (miễn phí 10.000 Neurons mỗi ngày), có chế độ thinking. Worker gọi model qua binding `env.AI`, không cần API key bên ngoài. App gọi Worker bằng mã truy cập riêng lưu trong Keychain.
+- Bỏ Qwen local. Mất mạng, lỗi hoặc hết quota thì dùng **bộ hiểu câu offline** trong code.
+
+## Thiết kế
+- `apps/ai-worker/`: Worker chỉ làm proxy mỏng. Nhận `{ mode: 'fast' | 'think', messages, schema? }`, kiểm tra mã `APP_TOKEN` (secret) và giới hạn kích thước, chọn model theo `mode` ở phía server, gọi `env.AI.run`, trả `{ content, reasoning }`.
+- App dùng lại `buildThinkingMessages`, `buildFastPrompt`, `parseThinkingResult` và `parseAiPreferences`. Toàn bộ kiểm tra đầu ra vẫn nằm trong app, bộ tính vẫn kiểm từng đồng.
+- Chế độ nhanh: chạy bộ hiểu câu offline trước. Câu nào nó không hiểu thì mới gọi Worker `fast`.
+- Suy nghĩ kỹ: gọi Worker `think` (tối đa 2 lượt, giữ cơ chế góp ý từ bộ tính). Lỗi thì xuống `fast`, rồi xuống offline, kèm cảnh báo.
+- Dữ liệu gửi đi: chỉ mô tả sở thích, kỳ, ngân sách và thực đơn dự trù. Không gửi sổ, giao dịch hay số dư.
+- Bỏ Qwen (`llama.rn`, phần tải mô hình, `ModelFileVerifier`, AI ở `spending-screen`) để sang T4, sau khi T3 chạy được trên máy.
+
+## Tiêu chí xong
+- [ ] Câu "quận 10, thích ăn phở, 700k trong 7 ngày" ra roadmap khi tắt mạng.
+- [ ] Có mạng: "Suy nghĩ kỹ" trả về tips và reasoning, không crash.
+- [ ] Mã truy cập không nằm trong repo hay log. Worker từ chối yêu cầu không có mã đúng.
