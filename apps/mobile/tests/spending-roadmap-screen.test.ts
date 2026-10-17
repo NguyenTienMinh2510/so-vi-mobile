@@ -19,14 +19,29 @@ function harness(available = true, actualDiscovery = false) {
   const loadVenues = async () => { if(venueFailure) throw Error('Thiếu database quán'); if(pausedVenues) return new Promise(resolve=>{resolveVenues=resolve;}); return noVenues ? [] : [venue]; };
   const discovered: any = {};
   runInNewContext(ts.transpileModule(readFileSync(new URL('../src/spending-discovery.ts',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText,{exports:discovered,Date,Error,require:(name:string)=> name.includes('domain')?domain:name.includes('spending-roadmap')?roadmap:name.includes('meal-estimates')?estimates:name.includes('venues-native')?{loadFoodVenues:loadVenues}:venueTools});
-  const thinkCalls: any[] = [], thinkReplies: any[] = [];
+  const thinkCalls: any[] = [], thinkReplies: any[] = [], fastReplies: number[] = [], networkModes: string[] = []; let pausedAi = false;
   const slots: any[] = [], effects: (() => void)[] = [], commands: any[] = []; const intervals = new Map<number,()=>void>(); let clockMillis = Date.parse(now), timerId = 0; let identifier = 0, cancelCount = 0;
   let resolveFetch: ((v: any) => void) | undefined, resolveAi: ((v: any) => void) | undefined, resolveSave: (() => void) | undefined;
   const catalog = ['Cơm', 'Phở', 'Bún'].map((name, i) => ({ id: ['rice', 'pho', 'bun'][i], name, price: String(30000 + i * 10000), portion: '1 phần · Quán test', mode: 'out' as const, address: 'Quận 10, TP.HCM', priceSource: 'https://food.be.com.vn/ho-chi-minh/dieu-lan-quan-chay-hoa-hung-26064', pricedAt: '2026-10-13', estimated: true, allergens: [] }));
   const react = { Fragment: 'Fragment', createElement: (type: any, props: any, ...children: any[]) => ({ type, props: { ...props, children } }), useState: (initial: any) => { const at = cursor++; if (!(at in slots)) slots[at] = typeof initial === 'function' ? initial() : initial; return [slots[at], (v: any) => { slots[at] = typeof v === 'function' ? v(slots[at]) : v; }]; }, useRef: (v: any) => { const at = cursor++; if (!(at in slots)) slots[at] = { current: v }; return slots[at]; }, useEffect: (fn: any, deps: any[]) => { const at = cursor++; const old = slots[at]; if (!old || deps.some((x, i) => !Object.is(x, old[i]))) { slots[at] = deps; effects.push(fn); } } };
   class Clock extends Date { constructor(v?: string) { super(v ?? now); } static now(){return clockMillis;} }
+  const config = { url: 'https://worker.test', token: 'fake-test-token' }, cloud: any = {};
+  const mockFetch = async (_url: string, init: any) => {
+    const body = JSON.parse(init.body); networkModes.push(body.mode);
+    init.signal.addEventListener('abort', () => { cancelCount++; });
+    if (body.mode === 'fast') {
+      const status = fastReplies.shift(); if (status) return new Response(null, { status });
+      if (pausedAi) return new Promise(resolve => { resolveAi = value => resolve(Response.json({ content: JSON.stringify(value), reasoning: '' })); });
+      return Response.json({ content: JSON.stringify({ likedIds: [], excludedIds: [], excludedAllergens: [], frequency: [] }), reasoning: '' });
+    }
+    const reply = thinkReplies.shift(); if (!reply) return new Response(null, { status: 502 });
+    const result = typeof reply === 'function' ? reply(thinkCalls.at(-1).request) : reply;
+    return Response.json({ content: JSON.stringify({ likedIds: result.preferences.likedIds, excludedIds: result.preferences.excludedIds, frequency: result.preferences.frequency, allowCooking: result.allowCooking, tips: result.tips }), reasoning: result.reasoning });
+  };
+  runInNewContext(ts.transpileModule(readFileSync(new URL('../src/spending-cloud-core.ts', import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText, { exports: cloud, URL, AbortController, setTimeout, clearTimeout, fetch: mockFetch, Error, require: (name: string) => name.includes('thinking') ? thinkingModule : spending });
+  class TrackingController extends AbortController { abort() { cancelCount++; super.abort(); } }
   const exports: any = {};
-  runInNewContext(ts.transpileModule(readFileSync(new URL('../src/spending-roadmap-screen.tsx', import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.React, esModuleInterop: true } }).outputText, { exports, Date: Clock, Error, AbortController, setTimeout, clearTimeout, setInterval: (fn:()=>void) => {intervals.set(++timerId,fn);return timerId;}, clearInterval: (id:number) => {intervals.delete(id);}, require: (name: string) => {
+  runInNewContext(ts.transpileModule(readFileSync(new URL('../src/spending-roadmap-screen.tsx', import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.React, esModuleInterop: true } }).outputText, { exports, Date: Clock, Error, AbortController: TrackingController, setTimeout, clearTimeout, setInterval: (fn:()=>void) => {intervals.set(++timerId,fn);return timerId;}, clearInterval: (id:number) => {intervals.delete(id);}, require: (name: string) => {
     if (name === 'react') return react;
     if (name === './dish-images') return { dishImage: (meal: any) => ({ dish: meal.id }) };
     if (name === 'react-native') return { Image: 'Image', Text: 'Text', View: 'View', Pressable: 'Pressable', ScrollView: 'ScrollView', Linking: { openURL: async (url: string) => { maps.push(url); } }, Alert: { alert() {} }, AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) } };
@@ -34,7 +49,7 @@ function harness(available = true, actualDiscovery = false) {
     if (name === 'expo-router/react-navigation') return { usePreventRemove() {} };
     if (name === './domain') return domain;
     if (name === './spending') return spending;
-    if (name === './spending-roadmap') return roadmap;
+    if (name === './spending-roadmap') return { ...roadmap, parseRoadmapPreferencesOffline: (text: string, meals: any) => pausedAi ? null : roadmap.parseRoadmapPreferencesOffline(text, meals) };
     if (name === './spending-thinking') return thinkingModule;
     if (name === './spending-venues') return venueTools;
     if (name === './spending-meal-estimates') return estimates;
@@ -43,17 +58,18 @@ function harness(available = true, actualDiscovery = false) {
     if (name === './app-lock') return { useAppLock: () => ({ locked, covered: false, assertUnlocked: () => { if (locked) throw new Error('locked'); } }) };
     if (name === './store') return { newId: () => `roadmap-${++identifier}`, errorMessage: (e: any) => e.message, useLedger: () => ({ ledger, revision, execute: async (command: any, expected: number) => { if (pausedSave) await new Promise<void>(resolve => { resolveSave = resolve; }); if (locked || expected !== revision) throw new Error('stale/locked'); commands.push(command); ledger = domain.applyCommand(ledger, command, { now }); revision++; return { ledger, revision }; } }) };
     if (name === './ui') return { Button: 'Button', Card: 'Card', Choice: 'Choice', Icon: 'Icon', Field: 'Field', Page: 'Page', styles: {}, colors: {}, toggle: (a: string[], v: string) => a.includes(v) ? a.filter(x => x !== v) : [...a, v] };
-    if (name === './spending-ai') return { SPENDING_MODEL: { name: 'Qwen3.5-2B', bytes: 1568476256 }, spendingAiAvailable: available, spendingAi: { thinkingDeadline: () => Clock.now() + thinkingModule.THINKING_LIMITS.totalMs, state: { phase: 'ready', error: '' }, subscribe: () => () => {}, cancel: async () => { cancelCount++; }, infer: () => new Promise(resolve => { resolveAi = resolve; }), think: async (request: any, aliases: any, deadline: number) => { thinkCalls.push({ request, aliases, deadline }); const reply = thinkReplies.shift(); if (!reply) throw new Error('no think reply'); return typeof reply === 'function' ? reply(request) : reply; } } };
+    if (name === './spending-cloud') return { loadCloudSettings: async () => null, saveCloudSettings: async () => {}, checkCloudConnection: async () => {}, cloudFast: (text: string, meals: any, venues: any, aliases: any, signal: AbortSignal) => cloud.fastWithSettings(config, text, meals, venues, aliases, signal), cloudThink: (request: any, aliases: any, signal: AbortSignal) => { thinkCalls.push({ request, aliases }); return cloud.thinkWithSettings(config, request, aliases, signal); } };
+
     throw Error(name);
   } });
   const flatten = (v: any): any[] => Array.isArray(v) ? v.flatMap(flatten) : v && typeof v === 'object' ? [v, ...flatten(v.props?.children)] : [];
   const render = () => { cursor = 0; const tree = exports.RoadmapScreen(); while (effects.length) effects.shift()!(); return flatten(tree); };
   const node = (type: string, label: string) => { const value = render().find(v => v.type === type && (v.props.title === label || v.props.label === label || v.props.accessibilityLabel === label)); assert.ok(value, `${type}: ${label}`); return value; };
   const text = () => render().filter(v => v.type === 'Text').map(v => v.props.children.flat(Infinity).filter((x: any) => typeof x === 'string' || typeof x === 'number').join('')).join(' ');
-  return { thinkCalls, queueThink: (...replies: any[]) => { thinkReplies.push(...replies); }, render, node, text, commands, maps, failVenues:()=>{venueFailure=true;}, recoverVenues:()=>{venueFailure=false;}, emptyVenues:()=>{noVenues=true;}, pauseVenues:()=>{pausedVenues=true;}, finishVenues:()=>{assert.ok(resolveVenues);pausedVenues=false;resolveVenues([venue]);}, timers:()=>intervals.size, tick:(seconds:number)=>{clockMillis+=seconds*1000; for(const fn of [...intervals.values()])fn();}, ledger: () => ledger, advance: () => { revision++; }, lock: () => { locked = true; }, pauseFetch: () => { pausedFetch = true; }, finishFetch: () => { assert.ok(resolveFetch); resolveFetch({ meals: catalog, warnings: [] }); }, finishAi: () => { assert.ok(resolveAi); resolveAi({ likedIds: ['m1'], excludedIds: [], excludedAllergens: [], frequency: [] }); }, pauseSave: () => { pausedSave = true; }, finishSave: () => { assert.ok(resolveSave); pausedSave = false; resolveSave(); }, cancellation: () => cancelCount };
+  return { networkModes, queueFast: (...statuses: number[]) => { fastReplies.push(...statuses); }, pauseAi: () => { pausedAi = true; }, thinkCalls, queueThink: (...replies: any[]) => { thinkReplies.push(...replies); }, render, node, text, commands, maps, failVenues:()=>{venueFailure=true;}, recoverVenues:()=>{venueFailure=false;}, emptyVenues:()=>{noVenues=true;}, pauseVenues:()=>{pausedVenues=true;}, finishVenues:()=>{assert.ok(resolveVenues);pausedVenues=false;resolveVenues([venue]);}, timers:()=>intervals.size, tick:(seconds:number)=>{clockMillis+=seconds*1000; for(const fn of [...intervals.values()])fn();}, ledger: () => ledger, advance: () => { revision++; }, lock: () => { locked = true; }, pauseFetch: () => { pausedFetch = true; }, finishFetch: () => { assert.ok(resolveFetch); resolveFetch({ meals: catalog, warnings: [] }); }, finishAi: () => { assert.ok(resolveAi); resolveAi({ likedIds: ['m1'], excludedIds: [], excludedAllergens: [], frequency: [] }); }, pauseSave: () => { pausedSave = true; }, finishSave: () => { assert.ok(resolveSave); pausedSave = false; resolveSave(); }, cancellation: () => cancelCount };
 }
 const settle = async () => { for (let n = 0; n < 32; n++) await Promise.resolve(); };
-async function create(h: ReturnType<typeof harness>) { h.node('Field', 'Mô tả roadmap').props.onChangeText('Quận 10, 2 ngày, 300k, 3 bữa/ngày, thích cơm'); h.node('Button', 'Tạo roadmap').props.onPress(); await settle(); h.finishAi(); await settle(); h.render(); }
+async function create(h: ReturnType<typeof harness>) { h.node('Field', 'Mô tả roadmap').props.onChangeText('Quận 10, 2 ngày, 300k, 3 bữa/ngày, thích cơm'); h.node('Button', 'Tạo roadmap').props.onPress(); await settle(); h.render(); }
 test('roadmap imports only on reviewed save, displays one day and week, never creates an expense', async () => {
   const h = harness(); await create(h); assert.equal(h.commands.length, 0);
   assert.equal(h.render().filter(v => v.type === 'Button' && /^Đổi bữa/.test(v.props.title)).length, 3);
@@ -62,7 +78,7 @@ test('roadmap imports only on reviewed save, displays one day and week, never cr
 });
 test('late source and AI replies cannot replace a newer prompt or bypass live lock', async () => {
   for (const stage of ['source', 'ai', 'lock']) {
-    const h = harness(); if (stage === 'source') h.pauseFetch();
+    const h = harness(); h.pauseAi(); if (stage === 'source') h.pauseFetch();
     h.node('Field', 'Mô tả roadmap').props.onChangeText('Quận 10, 2 ngày, 300k, thích cơm'); h.node('Button', 'Tạo roadmap').props.onPress(); await settle();
     if (stage === 'lock') { h.lock(); h.render(); } else h.node('Field', 'Mô tả roadmap').props.onChangeText('Quận 10, 7 ngày, 900k');
     if (stage === 'source') h.finishFetch(); else h.finishAi(); await settle();
@@ -90,9 +106,9 @@ test('basic user prompt creates seven days without a model or optional preferenc
   h.node('Button','Lưu roadmap').props.onPress(); await settle(); assert.equal(h.ledger().spending.plans[0].meals.length,21); assert.equal(h.ledger().transactions.length,0);
 });
 test('generation waiting shows real source and AI stages, cancel retains the input and rejects late results', async () => {
-  const h=harness(); h.pauseFetch(); const input='Quận 10, 7 ngày, 900k, thích cơm'; h.node('Field','Mô tả roadmap').props.onChangeText(input); h.node('Button','Tạo roadmap').props.onPress(); await settle();
+  const h=harness(); h.pauseAi(); h.pauseFetch(); const input='Quận 10, 7 ngày, 900k, thích cơm'; h.node('Field','Mô tả roadmap').props.onChangeText(input); h.node('Button','Tạo roadmap').props.onPress(); await settle();
   assert.match(h.text(),/Tìm quán và món dự trù/); assert.match(h.text(),/Lên lịch/); assert.match(h.text(),/Kiểm tra ngân sách/); assert.match(h.text(),/Đã chờ/);const nodes=h.render();assert.ok(nodes.findIndex(v=>v.props.accessibilityLabel?.startsWith('Tìm quán và món dự trù:'))<nodes.findIndex(v=>v.type==='Field'),'waiting and cancellation precede the editable prompt while generating'); assert.ok(!h.text().includes('%')); assert.equal(h.timers(),1);h.tick(12);assert.match(h.text(),/12/);
-  h.finishFetch(); await settle(); assert.match(h.text(),/AI local/); h.node('Button','Hủy thao tác').props.onPress(); h.finishAi(); await settle();h.render();assert.equal(h.timers(),0);
+  h.finishFetch(); await settle(); assert.match(h.text(),/AI trên mạng/); h.node('Button','Hủy thao tác').props.onPress(); h.finishAi(); await settle();h.render();assert.equal(h.timers(),0);
   assert.equal(h.node('Field','Mô tả roadmap').props.value,input); assert.ok(!h.render().some(v=>v.type==='Button'&&v.props.title==='Lưu roadmap')); assert.equal(h.commands.length,0);
 });
 
@@ -145,10 +161,10 @@ test('thinking mode retries once with planner feedback and never keeps an infeas
   const greedy = (request: any) => ({ preferences: { likedIds: [], excludedIds: [], excludedAllergens: [], frequency: [{ mealId: request.menu.find((m: any) => m.name === 'Bún đậu mắm tôm').id, min: 14, max: 21 }] }, allowCooking: false, tips: [], reasoning: '' });
   h.queueThink(greedy, (request: any) => ({ preferences: { likedIds: [], excludedIds: [], excludedAllergens: [], frequency: [] }, allowCooking: true, tips: ['Giảm món đắt.'], reasoning: '' }));
   await thinkPrompt(h, 'Quận 10, 7 ngày, 400k, 3 bữa/ngày');
-  assert.equal(h.thinkCalls.length, 2); assert.equal(h.thinkCalls[0].request.cooking, 'unspecified'); assert.match(h.thinkCalls[1].request.feedback, /Bộ tính/); assert.equal(h.thinkCalls[0].deadline, h.thinkCalls[1].deadline); assert.equal(h.thinkCalls[0].deadline, Date.parse(now) + thinkingModule.THINKING_LIMITS.totalMs);
+  assert.equal(h.thinkCalls.length, 2); assert.equal(h.thinkCalls[0].request.cooking, 'unspecified'); assert.match(h.thinkCalls[1].request.feedback, /Bộ tính/);
   assert.match(h.text(), /sửa một lần/);
   const fail = harness(true, true); fail.queueThink(greedy, greedy); await thinkPrompt(fail, 'Quận 10, 7 ngày, 400k, 3 bữa/ngày');
-  assert.equal(fail.thinkCalls.length, 2); assert.match(fail.text(), /Chưa tìm được phương án/); assert.doesNotMatch(fail.text(), /AI đã suy nghĩ/);
+  assert.equal(fail.thinkCalls.length, 2); assert.match(fail.text(), /chưa đủ cho 21 bữa ăn ngoài/); assert.doesNotMatch(fail.text(), /AI đã suy nghĩ/);
 });
 test('“không nấu” removes cooked dishes from thinking and fast mode explains a too-small eat-out budget', async () => {
   const h = harness(true, true);
@@ -160,14 +176,38 @@ test('“không nấu” removes cooked dishes from thinking and fast mode expla
   const cook = harness(true, true); cook.node('Field', 'Mô tả roadmap').props.onChangeText('Quận 10, 7 ngày, 300k, 3 bữa/ngày, tự nấu được'); cook.node('Button', 'Tạo roadmap').props.onPress(); await settle(); await settle();
   assert.doesNotMatch(cook.text(), /chưa đủ/); assert.ok(cook.render().some(v => v.type === 'Text' && /\(tự nấu\)/.test(String(v.props.children))));
 });
-test('thinking that runs out of phone time falls back to the fast planner and says so', async () => {
-  const h = harness(true, true); h.queueThink(() => { throw new Error(`${thinkingModule.THINKING_INCOMPLETE} Bản nháp được giữ.`); });
-  await thinkPrompt(h, 'Quận 10, 2 ngày, 300k, 3 bữa/ngày');
-  assert.equal(h.thinkCalls.length, 1); const text = h.text();
-  assert.match(text, /dùng chế độ nhanh/); assert.doesNotMatch(text, /AI đã suy nghĩ/); assert.ok(h.render().some(v => v.type === 'Button' && /^Đổi bữa/.test(v.props.title)));
-  const other = harness(true, true); other.queueThink(() => { throw new Error('Đã hủy AI. Bản nháp được giữ.'); });
-  await thinkPrompt(other, 'Quận 10, 2 ngày, 300k, 3 bữa/ngày'); assert.match(other.text(), /Đã hủy AI/); assert.doesNotMatch(other.text(), /lịch này dùng chế độ nhanh/);
+test('think network failure falls back to fast, then quota falls back offline with warnings', async () => {
+  for (const quota of [false, true]) {
+    const h = harness(); if (quota) h.queueFast(429);
+    await thinkPrompt(h, 'Quận 10, 2 ngày, 300k, 3 bữa/ngày');
+    assert.deepEqual(h.networkModes, ['think', 'fast']);
+    assert.match(h.text(), /chế độ nhanh trên mạng/);
+    assert.match(h.text(), quota ? /đã dùng bộ hiểu câu offline/ : /Đã dùng chế độ nhanh trên mạng/);
+    assert.ok(h.node('Button', 'Lưu roadmap')); assert.equal(h.commands.length, 0);
+  }
 });
+
+test('required Vietnamese prompts generate offline without a Worker and preserve exact constraints', async () => {
+  for (const text of ['quận 10, thích ăn phở, 700k trong 7 ngày', 'quận 10, 700k trong 7 ngày, mình thích phở, em không ăn bún bò, phở tối đa 3 lần']) {
+    const h = harness(false, true);
+    h.node('Field', 'Mô tả roadmap').props.onChangeText(text); h.node('Button', 'Tạo roadmap').props.onPress(); await settle();
+    assert.deepEqual(h.networkModes, []); assert.match(h.text(), /Đã dùng bộ hiểu câu offline/);
+    h.node('Button', 'Lưu roadmap').props.onPress(); await settle();
+    const plan = h.ledger().spending.plans[0]; assert.equal(plan.meals.length, 21); assert.ok(plan.preferences.likedIds.includes('roadmap-estimate-pho'));
+    if (text.includes('không ăn')) {
+      assert.ok(plan.preferences.excludedIds.includes('roadmap-estimate-bun-bo'));
+      assert.deepEqual(JSON.parse(JSON.stringify(plan.preferences.frequency)), [{ mealId: 'roadmap-estimate-pho', min: 0, max: 3 }]);
+    }
+    assert.equal(h.ledger().transactions.length, 0);
+  }
+});
+
+test('unrecognized offline text after network failure keeps the existing draft', async () => {
+  const h = harness(); await create(h); h.node('Button', 'Sửa mô tả').props.onPress();
+  h.queueFast(429); h.node('Field', 'Mô tả roadmap').props.onChangeText('Quận 10, 300k, thích pizza'); h.node('Button', 'Tạo roadmap').props.onPress(); await settle();
+  assert.match(h.text(), /offline chưa hiểu mô tả/); assert.ok(h.node('Button', 'Lưu roadmap')); assert.equal(h.commands.length, 0);
+});
+
 test('every meal card shows its own dish picture instead of a generic emoji', async () => {
   const h = harness(true, true); h.node('Field', 'Mô tả roadmap').props.onChangeText('Quận 10, 2 ngày, 300k, 3 bữa/ngày'); h.node('Button', 'Tạo roadmap').props.onPress(); await settle(); await settle();
   const pictures = h.render().filter(v => v.type === 'Image'); assert.equal(pictures.length, 3); assert.ok(pictures.every(v => /^roadmap-estimate-/.test(v.props.source.dish) && v.props.accessible === false));

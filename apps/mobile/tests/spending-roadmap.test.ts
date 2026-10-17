@@ -1,8 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { runInNewContext } from 'node:vm';
-import { parseRoadmapPrompt, normalizeRoadmapText, roadmapAiCatalog, matchCatalogDishes, reviewRoadmapPreferences, roadmapAiAliases, restoreRoadmapAiPreferences, roadmapAreaMatches } from '../src/spending-roadmap.ts';
+import { parseRoadmapPrompt, parseRoadmapPreferencesOffline, normalizeRoadmapText, roadmapAiCatalog, matchCatalogDishes, reviewRoadmapPreferences, roadmapAiAliases, restoreRoadmapAiPreferences, roadmapAreaMatches } from '../src/spending-roadmap.ts';
 import { parseOnlineMenu, loadPublishedMeals } from '../src/spending-sources.ts';
 import { applyCommand, emptyLedger } from '../src/domain.ts';
 import { planSpending } from '../src/spending.ts';
@@ -134,16 +132,10 @@ test('pronouns share normalization for shortlist, review and calculator without 
   assert.equal(roadmapAiCatalog('chị thích phở', manyPho).length, 8);
 });
 
-test('actual calculator branch accepts each supported subject through the shared helper', () => {
-  const screen = readFileSync(new URL('../src/spending-roadmap-screen.tsx', import.meta.url), 'utf8');
-  const start = screen.indexOf('const clauses = normalizeRoadmapText(parsed.preferenceText'), end = screen.indexOf('preferences.likedIds = [...new Set(preferences.likedIds)];', start);
-  assert.ok(start >= 0 && end > start);
-  const logic = screen.slice(start, end + 'preferences.likedIds = [...new Set(preferences.likedIds)];'.length);
+test('offline calculator accepts each supported subject through the shared helper', () => {
   const catalog = [{ ...parseOnlineMenu(html(), source, day)[0], name: 'Phở' }];
   for (const subject of ['mình', 'em', 'tôi', 'tui', 'anh', 'chị']) {
-    const preferences = { likedIds: [] };
-    runInNewContext(logic, { normalizeRoadmapText, matchCatalogDishes, parsed: { preferenceText: `${subject} thích phở` }, catalog, preferences });
-    assert.deepEqual(Array.from(preferences.likedIds), [catalog[0].id]);
+    assert.deepEqual(parseRoadmapPreferencesOffline(`${subject} thích phở`, catalog)?.likedIds, [catalog[0].id]);
   }
 });
 

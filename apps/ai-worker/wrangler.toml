@@ -1,0 +1,6 @@
+name = "so-vi-ai"
+main = "src/index.ts"
+compatibility_date = "2026-10-18"
+
+[ai]
+binding = "AI"

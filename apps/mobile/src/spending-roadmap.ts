@@ -70,7 +70,7 @@ function amount(value: string, unit: string): string {
 function assertFrequencyPeriods(text: string) {
   for (const clause of normalizeRoadmapText(text).split(/[,;]/)) {
     const frequency = clause.match(/(?:it nhat|toi da|dung)\s*\d+\s*(?:lan|bua)(.*)$/);
-    if (frequency && !/^\s*(?:(?:moi|mot|trong|hang|\/)\s*)?(?:7\s*ngay|tuan|week)\s*$/.test(frequency[1])) throw new Error('Tần suất chỉ hỗ trợ mỗi tuần hoặc mỗi 7 ngày. Ghi rõ kỳ này; không đổi số lần theo ngày/tháng/năm thành tuần.');
+    if (frequency && frequency[1].trim() && !/^\s*(?:(?:moi|mot|trong|hang|\/)\s*)?(?:7\s*ngay|tuan|week)\s*$/.test(frequency[1])) throw new Error('Tần suất chỉ hỗ trợ mỗi tuần hoặc mỗi 7 ngày. Ghi rõ kỳ này; không đổi số lần theo ngày/tháng/năm thành tuần.');
   }
 }
 export function parseRoadmapPrompt(text: string, today: string) {
@@ -115,6 +115,8 @@ export function parseRoadmapPrompt(text: string, today: string) {
   const cooking: RoadmapCooking = !cookingClauses.length ? 'unspecified' : denies ? 'deny' : 'allow';
   const preferenceText = clauses.filter(part => {
     const value = normalizeRoadmapText(part);
+    const settingsOnly = matches.reduce((rest, match) => rest.replace(match[0].trim(), ''), value).replace(/\b(?:trong\s+)?\d+\s*ngay\b/g, '').trim();
+    if (!settingsOnly) return false;
     return !areaParts.includes(part) && !cookingClauses.includes(part) && !matches.some(match => match[0].trim() === value) && !/^\d+\s*ngay$|^\d+\s*bua\s*(?:\/\s*ngay|moi ngay|mot ngay)$|^(?:(?:bat dau|tu ngay)\s*)?\d{4}-\d{2}-\d{2}$/.test(value);
   }).join(', ');
   return { area, days, budget, reserve, mealsPerDay, startDay, endDay, preferenceText, cooking };
@@ -152,6 +154,37 @@ export function restoreRoadmapAiPreferences(proposed: Preferences, catalog: Meal
   const restored: Preferences = { likedIds: proposed.likedIds.map(id => stableIds.get(id)!), excludedIds: proposed.excludedIds.map(id => stableIds.get(id)!), excludedAllergens: [...proposed.excludedAllergens], frequency: proposed.frequency.map(item => ({ ...item, mealId: stableIds.get(item.mealId)! })) };
   return validatePreferences(restored, catalog);
 }
+const EXCLUSION = /^(?:khong an|khong thich|bo mon|loai tru)\s+(.+)$/;
+const FREQUENCY = /^(.+?)\s*(it nhat|toi da|dung)\s*(\d+)\s*(?:lan|bua)(?:\s*(?:(?:moi|mot|trong|hang|\/)\s*)?(?:7\s*ngay|tuan|week))?$/;
+const LIKED = /^(?:thich|uu tien)\s+(?:an\s+)?(.+)$/;
+export function parseRoadmapPreferencesOffline(text: string, catalog: MealOption[]): Preferences | null {
+  try {
+    if (typeof text !== 'string' || text.length > 1000) return null;
+    // Full roadmap prompts and preference-only text use the same strict preference boundary.
+    if (/\d\s*(?:k|tr|trieu|vnd|dong)\b/.test(normalizeRoadmapText(text))) text = parseRoadmapPrompt(text, '2000-01-01').preferenceText;
+    assertRoadmapFoodSafety(text); assertFrequencyPeriods(text);
+    const preferences: Preferences = { likedIds: [], excludedIds: [], excludedAllergens: [], frequency: [] };
+    for (const clause of normalizeRoadmapText(text, true).split(/[,;.]/).map(c => c.trim()).filter(Boolean)) {
+      const exclusion = clause.match(EXCLUSION), frequency = clause.match(FREQUENCY), liked = clause.match(LIKED);
+      if (frequency && !exclusion && !liked) {
+        const found = matchCatalogDishes(frequency[1].replace(/^an\s+/, ''), catalog), count = Number(frequency[3]);
+        if (found.length !== 1 || count > 21 || !dishNames(found[0]).some(n => n === frequency[1].replace(/^an\s+/, '').trim()) || preferences.frequency.some(f => f.mealId === found[0].id)) return null;
+        preferences.frequency.push({ mealId: found[0].id, min: frequency[2] === 'toi da' ? 0 : count, max: frequency[2] === 'it nhat' ? 21 : count });
+      } else if ((exclusion || liked) && !frequency) {
+        const target = exclusion ? preferences.excludedIds : preferences.likedIds;
+        for (const name of (exclusion ?? liked)![1].split(/\s+(?:va|hoac)\s+/)) {
+          const found = matchCatalogDishes(name, catalog);
+          // Require a known name/alias: do not silently discard qualifiers or unknown foods.
+          const normalized = normalizeRoadmapText(name);
+          if (!found.length || !found.some(m => dishNames(m).some(n => new RegExp(`(?:^| )${escapeRegExp(normalized)}(?: |$)`).test(n)))) return null;
+          target.push(...found.map(m => m.id));
+        }
+      } else return null;
+    }
+    preferences.likedIds = [...new Set(preferences.likedIds)]; preferences.excludedIds = [...new Set(preferences.excludedIds)];
+    return reviewRoadmapPreferences(text, preferences, catalog);
+  } catch { return null; }
+}
 /** suggestions=true (thinking mode): AI may add soft likes/frequencies, but the user's own exclusions, likes and counts stay exact. */
 export function reviewRoadmapPreferences(text: string, proposed: Preferences, catalog: MealOption[], options: { suggestions?: boolean } = {}) {
   const suggestions = options.suggestions === true;
@@ -161,7 +194,7 @@ export function reviewRoadmapPreferences(text: string, proposed: Preferences, ca
   const clauses = normalized.split(/[,;.]/).map(x => x.trim()).filter(Boolean);
   const allowedLikes = new Set<string>(), allowedExclusions = new Set<string>(), requestedFrequency = new Set<string>();
   for (const clause of clauses) {
-    const exclusion = clause.match(/(?:khong an|khong thich|bo mon|loai tru)\s+(.+)/);
+    const exclusion = clause.match(EXCLUSION);
     if (exclusion) {
       const names = exclusion[1].split(/\s+(?:va|hoac)\s+/).map(x => x.trim());
       for (const name of names) {
@@ -170,7 +203,7 @@ export function reviewRoadmapPreferences(text: string, proposed: Preferences, ca
         if (!found.length || found.some(m => !proposed.excludedIds.includes(m.id))) throw new Error('AI chưa hiểu đủ món không ăn. Sửa mô tả bằng tên món có trong nguồn rồi thử lại.');
       }
     }
-    const frequency = clause.match(/(.+?)\s*(it nhat|toi da|dung)\s*(\d+)\s*(?:lan|bua)/);
+    const frequency = clause.match(FREQUENCY);
     if (frequency) {
       const name = frequency[1].replace(/^an\s+/, '').trim(), count = Number(frequency[3]);
       const found = matchCatalogDishes(name, catalog);
@@ -179,7 +212,7 @@ export function reviewRoadmapPreferences(text: string, proposed: Preferences, ca
       requestedFrequency.add(found[0].id);
       if (!item || item.min !== (frequency[2] === 'toi da' ? 0 : count) || item.max !== (frequency[2] === 'it nhat' ? 21 : count)) throw new Error('AI trả về tần suất khác yêu cầu. Thử lại hoặc sửa mô tả.');
     }
-    const liked = clause.match(/^(?:thich|uu tien)\s+(.+)/);
+    const liked = clause.match(LIKED);
     if (liked && !frequency) {
       const found = liked[1].split(/\s+(?:va|hoac)\s+/).flatMap(name => matchCatalogDishes(name, catalog));
       found.forEach(m => allowedLikes.add(m.id));

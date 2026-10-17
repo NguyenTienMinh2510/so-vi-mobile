@@ -165,22 +165,11 @@ test('corrupt imported model and promotion failure preserve existing valid file'
   }
 });
 
-test('actual screen loop shares its deadline and enters the fast fallback when the repair budget expires', async () => {
-  const h = harness(), deadlines: number[] = [], think = h.ai.think.bind(h.ai);
-  h.ai.think = (...args: any[]) => { deadlines.push(args[2]); return think(...args); };
+test('Roadmap uses the cloud boundary and never loads a local model', () => {
   const screen = readFileSync(new URL('../src/spending-roadmap-screen.tsx', import.meta.url), 'utf8');
-  const start = screen.indexOf('    if (thinks) try {'), end = screen.indexOf('    } else if (parsed.preferenceText) {', start);
-  assert.ok(start > 0 && end > start);
-  const logic = screen.slice(start, end) + '    }';
-  const require = createRequire(import.meta.url), ts = require('typescript');
-  const code = ts.transpileModule(`(async () => { let plan = null, thinkingFellBack = false, allowCooking = false, preferences = {}, thinking; const warnings = []; ${logic}; return { thinkingFellBack, preferences, warnings }; })()`, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText;
-  const preview = await runInNewContext(code, { Error, Date, thinks: true, usesAi: true, parsed: { ...request, preferenceText: request.text }, catalog: [meal], source: {}, spendingAi: h.ai, request: 1, revision: 1, config: {}, old: null,
-    setBusy() {}, setWaiting() {}, check() {}, thinkingMenu: () => request.menu, mealFitsSlot: () => true, thinkingAliases: (c: any) => c, restoreThinkingPreferences: (p: any) => p, reviewRoadmapPreferences() {},
-    planSpending: () => { h.advance(240000); throw Error('try a cheaper plan'); }, stateFor() {}, errorMessage: (e: Error) => e.message, isThinkingIncomplete: thinking.isThinkingIncomplete,
-    roadmapAiCatalog: (_: string, c: any) => c, roadmapAiAliases: (c: any) => c, retrievedVenueContext: () => [], dishNames: () => [], normalizeRoadmapText: (s: string) => s, restoreRoadmapAiPreferences: (p: any) => p
-  });
-  assert.equal(preview.thinkingFellBack, true); assert.equal(JSON.stringify(preview.preferences), JSON.stringify(result)); assert.equal(preview.warnings.length, 1);
-  assert.deepEqual(deadlines, [241000, 241000]); assert.deepEqual(h.completions.map(c => c.enable_thinking), [true, false]); assert.equal(count(h, 'load'), 1);
+  assert.doesNotMatch(screen, /spendingAi|spending-ai|thinkingDeadline/);
+  assert.match(screen, /await cloudThink/); assert.match(screen, /await cloudFast/);
+  assert.match(screen, /parseRoadmapPreferencesOffline/);
 });
 
 test('memory warning releases idle context once and clears its idle timer', async () => {
