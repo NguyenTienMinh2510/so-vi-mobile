@@ -1,6 +1,24 @@
 export type ImportClassification = 'payment_success' | 'pending_order' | 'internal_transfer' | 'refund' | 'balance_update' | 'ignored';
 export type ImportSuggestion = { classification: ImportClassification; amount: string | null; reference: string | null; warnings: string[]; kind: 'income' | 'expense' | null };
 export const MAX_IMPORT_TEXT = 4000;
+/** Raw email/HTML accepted before conversion; the stored text is still capped at MAX_IMPORT_TEXT. */
+export const MAX_RAW_MESSAGE = 200000;
+const entities: Record<string, string> = { nbsp: ' ', amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", '#39': "'" };
+export const looksLikeHtml = (text: string) => /<(?:html|body|table|div|span|td|p|br|font|meta|style)\b[^>]*>/i.test(text);
+/** Bank emails are often HTML-only (BIDV ~19k chars of markup, ~1.1k chars of text). Keep only readable text. */
+export function messageToPlainText(text: string): string {
+  if (typeof text !== 'string') throw new Error('Nội dung không hợp lệ.');
+  if (text.length > MAX_RAW_MESSAGE) throw new Error('Email quá dài (trên 200.000 ký tự). Chia sẻ đoạn thông báo giao dịch thay vì cả thư.');
+  if (!looksLikeHtml(text)) return text;
+  const stripped = text.replace(/<!--[\s\S]*?-->/g, '').replace(/<(script|style|head|title)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, '')
+    .replace(/<br\s*\/?>|<\/(?:p|div|tr|li|h[1-6]|table|td|th)\s*>/gi, '\n').replace(/<[^>]*>/g, '')
+    .replace(/&(#x[0-9a-f]+|#\d+|[a-z]+|#39);/gi, (all, code: string) => {
+      const key = code.toLowerCase();
+      if (key.startsWith('#x') || /^#\d+$/.test(key)) { const n = key.startsWith('#x') ? parseInt(key.slice(2), 16) : Number(key.slice(1)); return n > 0 && n <= 0x10ffff ? String.fromCodePoint(n) : ''; }
+      return entities[key] ?? all;
+    });
+  return stripped.split('\n').map(line => line.replace(/[ \t ​]+/g, ' ').trim()).filter(Boolean).join('\n');
+}
 
 const fold = (text: string) => text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[đĐ]/g, 'd').toLowerCase();
 export function analyzeReceiptText(text: string): { suggestion: ImportSuggestion; candidates: { amount: string; evidence: string }[]; evidence: string | null } | null {
@@ -52,6 +70,12 @@ export function analyzeReceiptText(text: string): { suggestion: ImportSuggestion
 export function parseImportText(text: string): ImportSuggestion {
   if (typeof text !== 'string' || !text.trim() || text.length > MAX_IMPORT_TEXT) throw new Error('Dán nội dung từ 1 đến 4.000 ký tự.');
   const receipt = analyzeReceiptText(text); if (receipt) return receipt.suggestion;
+  const result = parseMessageText(text);
+  // Shortcuts that pass only the email Subject give text with no amount; say so instead of a generic miss.
+  if (!result.amount && text.length <= 300 && !/\d[\d.,]*\s*(?:vnd|vnđ|đ|₫|dong)\b/i.test(text) && /th[oô]ng b[aá]o|notification|giao d[iị]ch|transaction/i.test(text)) result.warnings = [...new Set([...result.warnings, 'Có vẻ chỉ nhận được tiêu đề email, chưa có nội dung thư. Sửa phím tắt để truyền Nội dung (body) của email.'])];
+  return result;
+}
+function parseMessageText(text: string): ImportSuggestion {
   const normalized = text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase();
   const warnings: string[] = [];
   const pending = /chua (?:thanh toan|thanh cong)|cho (?:thanh toan|xac nhan)|dang (?:cho|xu ly)|pending|that bai|khong thanh cong/.test(normalized);

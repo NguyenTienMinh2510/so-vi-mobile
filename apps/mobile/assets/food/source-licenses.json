@@ -1,0 +1,18 @@
+{
+  "documentation": "https://docs.overturemaps.org/attribution/",
+  "release": "2026-09-23.1",
+  "source_licenses": {
+    "meta": "CDLA-Permissive-2.0",
+    "Microsoft": "CDLA-Permissive-2.0",
+    "microsoft": "CDLA-Permissive-2.0",
+    "BrightQuery": "CDLA-Permissive-2.0",
+    "DAC": "CDLA-Permissive-2.0",
+    "Krick": "CDLA-Permissive-2.0",
+    "PinMeTo": "CDLA-Permissive-2.0",
+    "RenderSEO": "CDLA-Permissive-2.0",
+    "Foursquare": "Apache-2.0",
+    "foursquare": "Apache-2.0",
+    "AllThePlaces": "CC0-1.0",
+    "Overture": "CDLA-Permissive-2.0"
+  }
+}

@@ -1,3 +1,4 @@
+import * as thinking from '../src/spending-thinking.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
@@ -23,6 +24,7 @@ function harness(entries: [string, number][], failure = '') {
     if (name === 'expo-file-system/legacy') return fs;
     if (name === 'expo-document-picker') return {};
     if (name === './spending') return {};
+    if (name === './spending-thinking') return thinking;
     throw Error('Unexpected module ' + name);
   } });
   return { ai: exports.spendingAi, files, calls, finishVerification: () => finishVerify?.() };

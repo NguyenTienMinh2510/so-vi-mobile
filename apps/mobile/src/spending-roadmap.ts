@@ -1,5 +1,6 @@
 import { money, parseMoneyInput, timestamp } from './domain.ts';
 import { validatePreferences, type MealOption, type Preferences } from './spending.ts';
+import { FOOD_KNOWLEDGE } from './food-knowledge.generated.ts';
 
 export const normalizeRoadmapText = (value: string) => value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/\s+/g, ' ').trim();
 export function assertRoadmapArea(area: string) {
@@ -11,6 +12,36 @@ export function roadmapAreaMatches(area: string, address: string) {
   const requested = area.split(/[,;]/).map(normalizeRoadmapArea).filter(Boolean);
   return requested.length > 0 && requested.every(phrase => actual.some(part => part.phrase === phrase || (part.administrative && new RegExp(`(?:^| )${phrase}(?: |$)`).test(part.phrase))));
 }
+type DishKnowledge = { aliases: readonly string[]; total: number; areas: Readonly<Record<string, number>> };
+const dishKnowledge = FOOD_KNOWLEDGE.dishes as Readonly<Record<string, DishKnowledge>>;
+const areaTotals = FOOD_KNOWLEDGE.areaTotals as Readonly<Record<string, number>>;
+const knowledgeOf = (meal: MealOption) => meal.id.startsWith('roadmap-estimate-') && Object.hasOwn(dishKnowledge, meal.id.slice(17)) ? dishKnowledge[meal.id.slice(17)] : null;
+// Names people use for the same dish, mined from venue names. Only Sổ Ví estimates get aliases.
+export function dishNames(meal: MealOption): string[] { return [...new Set([normalizeRoadmapText(meal.name), ...(knowledgeOf(meal)?.aliases ?? [])])].filter(Boolean); }
+const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+export function matchCatalogDishes(phrase: string, catalog: MealOption[]): MealOption[] {
+  const value = normalizeRoadmapText(phrase);
+  if (value.length < 2) return [];
+  // A name containing the phrase ("bun" → every bún) or a dish name inside the phrase ("bun bo hue dac biet" → bún bò); an exact name beats a containing one, then the longest specific name wins.
+  const scored = catalog.map(meal => ({ meal, score: Math.max(0, ...dishNames(meal).map(name => name === value ? 3000 : name.includes(value) ? value.length + 1000 : new RegExp(`(?:^| )${escapeRegExp(name)}(?: |$)`).test(value) ? name.length : 0)) })).filter(item => item.score > 0);
+  const best = Math.max(0, ...scored.map(item => item.score));
+  return scored.filter(item => item.score === best).map(item => item.meal);
+}
+export function roadmapKnownArea(area: string): string | null {
+  const parts = normalizeRoadmapArea(area).length ? area.split(/[,;]/).map(normalizeRoadmapArea).map(p => p.replace(/^(?:quan (?!\d)|huyen |thanh pho )/, '')).filter(p => Object.hasOwn(areaTotals, p)) : [];
+  return parts.sort((a, b) => areaTotals[a] - areaTotals[b])[0] ?? null;
+}
+/** Venue-name signal count for a dish in the most specific known area; not menu evidence. */
+export function localDishSignal(area: string, meal: MealOption): { area: string; venues: number } | null {
+  const known = knowledgeOf(meal), key = roadmapKnownArea(area);
+  return known && key ? { area: key, venues: known.areas[key] ?? 0 } : null;
+}
+/** Stable order: dishes with more venues named after them in the area first. */
+export function rankMealsForArea(area: string, catalog: MealOption[]): MealOption[] {
+  return catalog.map((meal, i) => ({ meal, i, n: localDishSignal(area, meal)?.venues ?? -1 })).sort((a, b) => b.n - a.n || a.i - b.i).map(item => item.meal);
+}
+export type RoadmapCooking = 'allow' | 'deny' | 'unspecified';
+const COOKING_CLAUSE = /^(?:(?:co the|duoc|cho phep|muon|khong|chang|ko)\s+)*(?:(?:the|muon|duoc|co)\s+)?(?:tu\s+)?nau(?:\s+(?:an|com|duoc|o nha|tai nha|it|mot so bua|vai bua|buoi toi|bua toi))*(?:\s+(?:duoc|nhe))?$/;
 function promptClauses(text: string) {
   const clauses: string[] = []; let start = 0;
   for (let i = 0; i < text.length; i++) if (text[i] === ',' || text[i] === ';') {
@@ -44,7 +75,7 @@ export function parseRoadmapPrompt(text: string, today: string) {
   timestamp(`${today}T00:00:00.000Z`);
   const clauses = promptClauses(text), normalized = clauses.map(normalizeRoadmapText).join(', ');
   assertFrequencyPeriods(text);
-  const areaParts = clauses.filter(part => !/\d+\s*(?:ngay|bua)|\d{4}-\d{2}-\d{2}|ngan sach|du phong|\d\s*(?:k|tr|trieu|nghin|ngan|vnd|dong|d)\b|thich|uu tien|khong|bo mon|loai tru|chi an|di ung|kieng|it nhat|toi da|dung\s*\d|bat buoc|tranh|han che|nguyen lieu|chay|vegan|halal|gluten|lactose/.test(normalizeRoadmapText(part)));
+  const areaParts = clauses.filter(part => !/\d+\s*(?:ngay|bua)|\d{4}-\d{2}-\d{2}|ngan sach|du phong|\d\s*(?:k|tr|trieu|nghin|ngan|vnd|dong|d)\b|thich|uu tien|khong|bo mon|loai tru|chi an|di ung|kieng|it nhat|toi da|dung\s*\d|bat buoc|tranh|han che|nguyen lieu|chay|vegan|halal|gluten|lactose|\bnau\b|suy nghi/.test(normalizeRoadmapText(part)));
   let area = areaParts.join(', '); assertRoadmapArea(area);
   if (/^(?:quan|q\.?)\s*10$/i.test(normalizeRoadmapText(area))) area = 'Quận 10, TP.HCM';
   const financeText = normalized.replace(/\d{4}-\d{2}-\d{2}/g, '');
@@ -74,33 +105,40 @@ export function parseRoadmapPrompt(text: string, today: string) {
   if (!budget || money(budget, { positive: true }) <= money(reserve)) throw new Error('Nhập ngân sách lớn hơn dự phòng, ví dụ 900k.');
   const endDay = new Date(Date.parse(`${startDay}T00:00:00.000Z`) + (days - 1) * 86400000).toISOString().slice(0, 10);
   timestamp(`${endDay}T00:00:00.000Z`);
+  // "tự nấu được" / "nấu ở nhà" allows home-cooked estimates; "không nấu" forbids them. Both are plan settings, not food preferences.
+  const cookingClauses = clauses.filter(part => COOKING_CLAUSE.test(normalizeRoadmapText(part)));
+  const denies = cookingClauses.some(part => /\b(?:khong|chang|ko)\s+(?:the\s+|muon\s+|duoc\s+|co\s+)?(?:tu\s+)?nau\b/.test(normalizeRoadmapText(part)));
+  if (denies && cookingClauses.some(part => !/\b(?:khong|chang|ko)\b/.test(normalizeRoadmapText(part)))) throw new Error('Mô tả vừa cho phép vừa không cho tự nấu. Chọn một.');
+  const cooking: RoadmapCooking = !cookingClauses.length ? 'unspecified' : denies ? 'deny' : 'allow';
   const preferenceText = clauses.filter(part => {
     const value = normalizeRoadmapText(part);
-    return !areaParts.includes(part) && !matches.some(match => match[0].trim() === value) && !/^\d+\s*ngay$|^\d+\s*bua\s*(?:\/\s*ngay|moi ngay|mot ngay)$|^(?:(?:bat dau|tu ngay)\s*)?\d{4}-\d{2}-\d{2}$/.test(value);
+    return !areaParts.includes(part) && !cookingClauses.includes(part) && !matches.some(match => match[0].trim() === value) && !/^\d+\s*ngay$|^\d+\s*bua\s*(?:\/\s*ngay|moi ngay|mot ngay)$|^(?:(?:bat dau|tu ngay)\s*)?\d{4}-\d{2}-\d{2}$/.test(value);
   }).join(', ');
-  return { area, days, budget, reserve, mealsPerDay, startDay, endDay, preferenceText };
+  return { area, days, budget, reserve, mealsPerDay, startDay, endDay, preferenceText, cooking };
 }
 export function assertRoadmapFoodSafety(text: string, preferences?: Preferences) {
   if (/di ung|allerg|nguyen lieu|thanh phan|an toan|khong (?:co|chua)|khong dung|kieng|chay|vegan|vegetarian|gluten|lactose|halal/.test(normalizeRoadmapText(text)) || preferences?.excludedAllergens.length) throw new Error('Nguồn chưa xác nhận nguyên liệu hoặc dị ứng. Không thể lập roadmap an toàn theo điều kiện này.');
 }
+// 8 dishes keep every bún/bánh family of the 22 estimates inside the 4B prompt budget.
+export const ROADMAP_AI_MEALS = 8;
 export function roadmapAiCatalog(text: string, catalog: MealOption[]): MealOption[] {
   assertFrequencyPeriods(text);
   const required: MealOption[] = [], liked: MealOption[] = [], representatives: MealOption[] = [];
   for (const clause of normalizeRoadmapText(text).split(/[,;]/).map(v => v.trim()).filter(Boolean)) {
     const name = clause.replace(/^(?:an|thich|uu tien|khong an|khong thich|bo mon|loai tru)\s+/, '').replace(/\s*(?:it nhat|toi da|dung)\s*\d+.*/, '').trim();
-    const matches = catalog.filter(m => name.length > 1 && name.split(/\s+(?:va|hoac)\s+/).some(part => normalizeRoadmapText(m.name).includes(part)));
+    const matches = [...new Map(name.split(/\s+(?:va|hoac)\s+/).flatMap(part => matchCatalogDishes(part, catalog)).map(m => [m.id, m])).values()];
     if (/^(?:thich|uu tien)\s+/.test(clause) && !/(?:it nhat|toi da|dung)\s*\d+/.test(clause)) { liked.push(...matches); if (matches[0]) representatives.push(matches[0]); }
     else required.push(...matches);
   }
   const mustKeep = [...new Map([...required, ...representatives].map(m => [m.id, m])).values()];
-  if (mustKeep.length > 6) throw new Error('Điều kiện bắt buộc khớp hơn 6 món cho AI local. Dùng tên món cụ thể hơn; không bỏ món được yêu cầu.');
+  if (mustKeep.length > ROADMAP_AI_MEALS) throw new Error('Điều kiện bắt buộc khớp hơn 8 món cho AI local. Dùng tên món cụ thể hơn; không bỏ món được yêu cầu.');
   const venues = [...new Set(catalog.map(m => m.priceSource))].map(source => catalog.filter(m => m.priceSource === source));
   const diverse: MealOption[] = [];
   for (let i = 0; i < Math.max(0, ...venues.map(menu => menu.length)); i++) for (const menu of venues) if (menu[i]) diverse.push(menu[i]);
-  return [...new Map([...mustKeep, ...liked, ...diverse].map(m => [m.id, m])).values()].slice(0, 6);
+  return [...new Map([...mustKeep, ...liked, ...diverse].map(m => [m.id, m])).values()].slice(0, ROADMAP_AI_MEALS);
 }
 export function roadmapAiAliases(catalog: MealOption[]): MealOption[] {
-  if (!Array.isArray(catalog) || catalog.length < 1 || catalog.length > 6 || new Set(catalog.map(m => m.id)).size !== catalog.length) throw new Error('AI local cần 1–6 món có mã riêng.');
+  if (!Array.isArray(catalog) || catalog.length < 1 || catalog.length > ROADMAP_AI_MEALS || new Set(catalog.map(m => m.id)).size !== catalog.length) throw new Error('AI local cần 1–8 món có mã riêng.');
   return catalog.map((meal, i) => ({ ...meal, allergens: [...meal.allergens], id: `m${i + 1}` }));
 }
 export function restoreRoadmapAiPreferences(proposed: Preferences, catalog: MealOption[]): Preferences {
@@ -109,7 +147,9 @@ export function restoreRoadmapAiPreferences(proposed: Preferences, catalog: Meal
   const restored: Preferences = { likedIds: proposed.likedIds.map(id => stableIds.get(id)!), excludedIds: proposed.excludedIds.map(id => stableIds.get(id)!), excludedAllergens: [...proposed.excludedAllergens], frequency: proposed.frequency.map(item => ({ ...item, mealId: stableIds.get(item.mealId)! })) };
   return validatePreferences(restored, catalog);
 }
-export function reviewRoadmapPreferences(text: string, proposed: Preferences, catalog: MealOption[]) {
+/** suggestions=true (thinking mode): AI may add soft likes/frequencies, but the user's own exclusions, likes and counts stay exact. */
+export function reviewRoadmapPreferences(text: string, proposed: Preferences, catalog: MealOption[], options: { suggestions?: boolean } = {}) {
+  const suggestions = options.suggestions === true;
   validatePreferences(proposed, catalog); assertRoadmapFoodSafety(text, proposed);
   assertFrequencyPeriods(text);
   const normalized = normalizeRoadmapText(text);
@@ -120,7 +160,7 @@ export function reviewRoadmapPreferences(text: string, proposed: Preferences, ca
     if (exclusion) {
       const names = exclusion[1].split(/\s+(?:va|hoac)\s+/).map(x => x.trim());
       for (const name of names) {
-        const found = catalog.filter(m => normalizeRoadmapText(m.name).includes(name));
+        const found = matchCatalogDishes(name, catalog);
         found.forEach(m => allowedExclusions.add(m.id));
         if (!found.length || found.some(m => !proposed.excludedIds.includes(m.id))) throw new Error('AI chưa hiểu đủ món không ăn. Sửa mô tả bằng tên món có trong nguồn rồi thử lại.');
       }
@@ -128,7 +168,7 @@ export function reviewRoadmapPreferences(text: string, proposed: Preferences, ca
     const frequency = clause.match(/(.+?)\s*(it nhat|toi da|dung)\s*(\d+)\s*(?:lan|bua)/);
     if (frequency) {
       const name = frequency[1].replace(/^an\s+/, '').trim(), count = Number(frequency[3]);
-      const found = catalog.filter(m => normalizeRoadmapText(m.name).includes(name));
+      const found = matchCatalogDishes(name, catalog);
       if (found.length !== 1) throw new Error('Tần suất cần tên một món cụ thể trong nguồn.');
       const item = proposed.frequency.find(f => f.mealId === found[0].id);
       requestedFrequency.add(found[0].id);
@@ -136,15 +176,43 @@ export function reviewRoadmapPreferences(text: string, proposed: Preferences, ca
     }
     const liked = clause.match(/^(?:thich|uu tien)\s+(.+)/);
     if (liked && !frequency) {
-      const found = catalog.filter(m => normalizeRoadmapText(m.name).includes(liked[1]));
+      const found = matchCatalogDishes(liked[1], catalog);
       found.forEach(m => allowedLikes.add(m.id));
+      if (suggestions && !found.length) continue;
       if (!found.length || !found.some(m => proposed.likedIds.includes(m.id))) throw new Error('AI chưa giữ món được thích. Sửa mô tả theo tên món có trong nguồn rồi thử lại.');
     }
+    if (suggestions) continue;
     if (/khong|chi an|bat buoc|tranh|han che|moi|tuan|lan|it nhat|toi da|dung\s*\d/.test(clause) && !exclusion && !frequency) throw new Error('Điều kiện ăn uống chưa rõ. Dùng tên món và số lần cụ thể.');
     if (!exclusion && !frequency && !liked) throw new Error('Còn nội dung chưa hiểu trong mô tả. Dùng Quận 10, kỳ/ngân sách và “thích”, “không ăn” hoặc tần suất theo tên món.');
   }
+  if (suggestions) { if (proposed.excludedIds.some(id => !allowedExclusions.has(id))) throw new Error('AI tự loại món người dùng chưa yêu cầu. Thử lại.'); return proposed; }
   if (proposed.likedIds.some(id => !allowedLikes.has(id)) || proposed.excludedIds.some(id => !allowedExclusions.has(id)) || proposed.frequency.some(f => !requestedFrequency.has(f.mealId))) throw new Error('AI tự thêm sở thích hoặc điều kiện chưa được yêu cầu. Thử lại với tên món cụ thể.');
   if (proposed.frequency.length && !/\d+\s*(?:lan|bua)/.test(normalized)) throw new Error('AI tự thêm tần suất chưa được yêu cầu.');
   if (/khong|chi an|bat buoc|tranh|han che|moi|tuan|lan/.test(normalized) && !clauses.some(c => /khong an|khong thich|bo mon|loai tru|(?:it nhat|toi da|dung)\s*\d+/.test(c))) throw new Error('Điều kiện ăn uống chưa rõ. Dùng tên món và số lần cụ thể.');
   return proposed;
+}
+
+export const THINKING_MENU = 32;
+/** Thinking mode sees the whole estimate menu (≤32) with breakfast fit and local venue-name signal. */
+export function thinkingAliases(catalog: MealOption[]): MealOption[] {
+  if (!Array.isArray(catalog) || catalog.length < 1 || catalog.length > THINKING_MENU || new Set(catalog.map(m => m.id)).size !== catalog.length) throw new Error('AI suy nghĩ cần 1–32 món có mã riêng.');
+  return catalog.map((meal, i) => ({ ...meal, allergens: [...meal.allergens], id: `m${i + 1}` }));
+}
+export function thinkingMenu(area: string, catalog: MealOption[], fitsBreakfast: (meal: MealOption) => boolean) {
+  return thinkingAliases(catalog).map((alias, i) => ({ id: alias.id, name: alias.name, price: alias.price, cook: alias.mode === 'cook', breakfast: fitsBreakfast(catalog[i]), localVenues: localDishSignal(area, catalog[i])?.venues ?? null }));
+}
+export function restoreThinkingPreferences(proposed: Preferences, catalog: MealOption[]): Preferences {
+  const aliases = thinkingAliases(catalog); validatePreferences(proposed, aliases);
+  const stable = new Map(aliases.map((meal, i) => [meal.id, catalog[i].id]));
+  return validatePreferences({ likedIds: proposed.likedIds.map(id => stable.get(id)!), excludedIds: proposed.excludedIds.map(id => stable.get(id)!), excludedAllergens: [], frequency: proposed.frequency.map(f => ({ ...f, mealId: stable.get(f.mealId)! })) }, catalog);
+}
+/** Cheapest possible all-eat-out total, so a too-small budget can suggest cooking instead of a bare failure. */
+export function minimumEatOutCost(catalog: MealOption[], days: number, mealsPerDay: number, fits: (meal: MealOption, index: number) => boolean): bigint | null {
+  let total = 0n;
+  for (let index = 0; index < mealsPerDay; index++) {
+    const prices = catalog.filter(m => m.mode !== 'cook' && fits(m, index)).map(m => BigInt(m.price));
+    if (!prices.length) return null;
+    total += prices.reduce((a, b) => a < b ? a : b) * BigInt(days);
+  }
+  return total;
 }

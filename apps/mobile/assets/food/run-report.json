@@ -1,0 +1,42 @@
+{
+  "job_id": "ef16080a2003499196a861279aaaaf3b",
+  "release": "2026-09-23.1",
+  "exported_at": "2026-10-17T05:50:04.341254+00:00",
+  "total": 69310,
+  "venues": 49605,
+  "closed": 0,
+  "needs_review": 19705,
+  "missing_address": 0,
+  "missing_menu_price": 49605,
+  "coverage": "Các quán có trong release và polygon đã chọn; không bảo đảm toàn bộ quán thực tế.",
+  "source_config": {
+    "release": "2026-09-23.1",
+    "schema": "076d8efd378f63e87118daa2c578b9d9fc97f7a7bd433af6aa3e336b84e06764",
+    "boundary_hash": "6f573a4049527b6546900bf420f5b8b60fdaeed5b590529a6ab320c140fb4b47",
+    "boundary_metadata": {
+      "name": "Ho Chi Minh",
+      "iso": "VN-SG",
+      "year": "2008",
+      "license": "Public Domain",
+      "source": "https://media.githubusercontent.com/media/wmgeolab/geoBoundaries/9469f09/releaseData/gbOpen/VNM/ADM1/geoBoundaries-VNM-ADM1.geojson",
+      "scope": "hcm-pre-2025",
+      "quality": "Historical generalized boundary; not a 2025 cadastral survey",
+      "verification": "Unique VN-SG feature, pinned geometry hash; old-city area approximately 2095 km2",
+      "area_reference": "https://chinhphu.vn/default.aspx?docid=18079&pageid=27160"
+    },
+    "license_hashes": {
+      "overture-attribution.html": "08b00a28152dcc23eaebe421ab1b53815f81e1c5e6b7418bcc4246bd5ee6a82e",
+      "cdla-permissive-2.0.html": "1ca42712509d6a43e4422a9d4aa1a08f798f12f2de4968f4771734ec60cf4ef2",
+      "apache-2.0.txt": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+      "foursquare-notice.html": "c5b92cfb81b0df1c7c3412bdd125ac4e957118658c5a5088e384dae89b17199d",
+      "cc0-1.0.txt": "a2010f343487d3f7618affe54f789f5487602331c0a8d03f49e9a7c547cf0499"
+    },
+    "mode": "full"
+  },
+  "files": {
+    "venues.csv": "10503de6e786917c26916355911eff99ba8801dda483fc8bbed070015bf4e280",
+    "venues.json": "06ca9fd6461329a97d4b6544b3cba0c3c4af173fbf41af386c4b79f84c83961f",
+    "needs-review.json": "5f97300517c2ba101a79b07af95df0317faee6facfc04aa18d407b0abb671983",
+    "sources-and-licenses.json": "f1fd478d05645c5d390c12e7953d4f49e9a53bc8ea2fd774eedac3c02005ca94"
+  }
+}

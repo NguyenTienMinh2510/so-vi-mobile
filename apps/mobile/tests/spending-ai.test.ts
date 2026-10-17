@@ -1,3 +1,4 @@
+import * as thinking from '../src/spending-thinking.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
@@ -24,6 +25,7 @@ function harness(native = true) {
     if (name === 'expo-file-system/legacy') return fs;
     if (name === 'expo-document-picker') return { getDocumentAsync: async () => ({ canceled: false, assets: [{ uri: 'file:///picked/model.gguf', size: 3443763168 }] }) };
     if (name === './spending') return { parseAiPreferences };
+    if (name === './spending-thinking') return thinking;
     if (name === 'llama.rn') return { initLlama: async () => { calls.push('load'); if (pauseLoad) return new Promise(resolve => { resolveLoad = resolve; }); return context; } };
     throw new Error(`Unexpected module: ${name}`);
   } });

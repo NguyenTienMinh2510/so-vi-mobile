@@ -1,0 +1,47 @@
+{
+  "venues.csv": {
+    "expected": "10503de6e786917c26916355911eff99ba8801dda483fc8bbed070015bf4e280",
+    "actual": "10503de6e786917c26916355911eff99ba8801dda483fc8bbed070015bf4e280",
+    "comparison": "exact"
+  },
+  "venues.json": {
+    "expected": "06ca9fd6461329a97d4b6544b3cba0c3c4af173fbf41af386c4b79f84c83961f",
+    "actual": "06ca9fd6461329a97d4b6544b3cba0c3c4af173fbf41af386c4b79f84c83961f",
+    "comparison": "exact"
+  },
+  "needs-review.json": {
+    "expected": "5f97300517c2ba101a79b07af95df0317faee6facfc04aa18d407b0abb671983",
+    "actual": "5f97300517c2ba101a79b07af95df0317faee6facfc04aa18d407b0abb671983",
+    "comparison": "exact"
+  },
+  "sources-and-licenses.json": {
+    "expected": "f1fd478d05645c5d390c12e7953d4f49e9a53bc8ea2fd774eedac3c02005ca94",
+    "actual": "f1fd478d05645c5d390c12e7953d4f49e9a53bc8ea2fd774eedac3c02005ca94",
+    "comparison": "exact"
+  },
+  "licenses/overture-attribution.html": {
+    "expected": "08b00a28152dcc23eaebe421ab1b53815f81e1c5e6b7418bcc4246bd5ee6a82e",
+    "actual": "9b7d988de4cab077ae2c74fb1ca1f6c517804f5fb95d6817d4b5551d78484e34",
+    "comparison": "CRLF-to-LF"
+  },
+  "licenses/cdla-permissive-2.0.html": {
+    "expected": "1ca42712509d6a43e4422a9d4aa1a08f798f12f2de4968f4771734ec60cf4ef2",
+    "actual": "d59f84d20feb138dc96dbe1dee45bbd32aee0532cbe8ce4312d3cb44e46c347b",
+    "comparison": "CRLF-to-LF"
+  },
+  "licenses/apache-2.0.txt": {
+    "expected": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+    "actual": "3ddf9be5c28fe27dad143a5dc76eea25222ad1dd68934a047064e56ed2fa40c5",
+    "comparison": "CRLF-to-LF"
+  },
+  "licenses/foursquare-notice.html": {
+    "expected": "c5b92cfb81b0df1c7c3412bdd125ac4e957118658c5a5088e384dae89b17199d",
+    "actual": "4bd44fadfc7d9bdc7a0dd580ee52693dbf980c6fb25f4b360893e2a1d5e7bb4f",
+    "comparison": "CRLF-to-LF"
+  },
+  "licenses/cc0-1.0.txt": {
+    "expected": "a2010f343487d3f7618affe54f789f5487602331c0a8d03f49e9a7c547cf0499",
+    "actual": "f4e7f373b9b996950337e8d41a4a2939c2d90b7725e9baf3d5084a22717ad328",
+    "comparison": "CRLF-to-LF"
+  }
+}
