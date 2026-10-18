@@ -72,7 +72,7 @@ const settle = async () => { for (let n = 0; n < 32; n++) await Promise.resolve(
 async function create(h: ReturnType<typeof harness>) { h.node('Field', 'Mô tả roadmap').props.onChangeText('Quận 10, 2 ngày, 300k, 3 bữa/ngày, thích cơm'); h.node('Button', 'Tạo roadmap').props.onPress(); await settle(); h.render(); }
 test('roadmap imports only on reviewed save, displays one day and week, never creates an expense', async () => {
   const h = harness(); await create(h); assert.equal(h.commands.length, 0);
-  assert.match(h.text(), /Ngân sách thấp nên một số món bị lặp\./);
+  assert.match(h.text(), /Một số món hoặc nhóm món bị lặp \(ngân sách thấp hoặc ít món phù hợp\)\./);
   assert.equal(h.render().filter(v => v.type === 'Button' && /^Đổi bữa/.test(v.props.title)).length, 3);
   h.node('Choice', 'Xem roadmap').props.onSelect('week'); assert.ok(h.text().includes('13/10') && h.text().includes('14/10'));
   h.node('Button', 'Lưu roadmap').props.onPress(); await settle(); assert.equal(h.commands.length, 1); assert.equal(h.commands[0].type, 'spending.roadmap.upsert'); assert.equal(h.ledger().transactions.length, 0);

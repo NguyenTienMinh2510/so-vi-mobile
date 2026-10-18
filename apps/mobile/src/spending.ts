@@ -128,7 +128,7 @@ export function planSpending(s: Ledger, config: PlanConfig, catalog: MealOption[
     };
     const reserved = futureMinimum(offset + 7); const answer = search(0, funds - reserved); if (answer === null) fail('Chưa tìm được phương án trong ngân sách và điều kiện đã chọn.'); funds = answer + reserved;
   }
-  if (meals.some((slot, i) => meals.some((other, j) => j < i && other.day === slot.day && other.meal.id === slot.meal.id))) fail('Không xếp trùng món trong cùng ngày.');
+  if (meals.some((slot, i) => meals.some((other, j) => j < i && other.day === slot.day && other.meal.id === slot.meal.id && (!protectedSlot(slot, today) || !protectedSlot(other, today))))) fail('Không xếp trùng món trong cùng ngày.');
   if (!frequencyValid(meals, days, preferences) || money(spendingTotals(s, result, now).remaining) < 0n) fail('Chưa tìm được phương án trong ngân sách.'); return result;
 }
 export function planHasMealRepetition(plan: SpendingPlan): boolean {

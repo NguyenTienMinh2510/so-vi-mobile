@@ -43,7 +43,7 @@ export function RoadmapScreen() {
   const stopElapsed = () => { if (elapsedTimer.current !== null) { clearInterval(elapsedTimer.current); elapsedTimer.current = null; } };
   const cancel = () => { generation.current++; controller.current?.abort(); stopElapsed(); if (mounted.current) { setWaiting(null); setCandidates(null); if (active.current) setBusy('Đang dừng thao tác…'); } };
   const edit = () => { try { latest.current.lock.assertUnlocked(); if (latest.current.lock.locked || latest.current.lock.covered || AppState.currentState !== 'active') throw new Error('Mở khóa ứng dụng trước khi sửa.'); } catch (e) { setError(errorMessage(e)); return false; } cancel(); setDirty(true); setError(''); return true; };
-  const updateDraft = (next: Draft) => { const warning = 'Ngân sách thấp nên một số món bị lặp.'; next = { ...next, warnings: [...next.warnings.filter(value => value !== warning), ...(planHasMealRepetition(next.plan) ? [warning] : [])] }; draftRef.current = next; setDraft(next); };
+  const updateDraft = (next: Draft) => { const warning = 'Một số món hoặc nhóm món bị lặp (ngân sách thấp hoặc ít món phù hợp).'; next = { ...next, warnings: [...next.warnings.filter(value => value !== warning), ...(planHasMealRepetition(next.plan) ? [warning] : [])] }; draftRef.current = next; setDraft(next); };
   useEffect(() => {
     mounted.current = true;
     void loadCloudSettings().then(value => { if (mounted.current && value) { setWorkerUrl(value.url); setWorkerToken(value.token); } }).catch(() => { if (mounted.current) setCloudStatus('Chưa đọc được thiết lập Worker.'); });

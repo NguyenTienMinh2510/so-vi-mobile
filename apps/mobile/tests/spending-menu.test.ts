@@ -89,7 +89,7 @@ test('near-minimum budget relaxes soft repetition, keeps daily uniqueness, and e
   uniqueDays(plan); assert.ok(planHasMealRepetition(plan));
   assert.equal(plan.meals.reduce((n, s) => n + BigInt(s.meal.price), 0n), 210000n);
   assert.match(readFileSync(new URL('../src/spending-roadmap-screen.tsx', import.meta.url), 'utf8'), /planHasMealRepetition\(next.plan\)[\s\S]*?\[warning\]/);
-  assert.match(readFileSync(new URL('../src/spending-roadmap-screen.tsx', import.meta.url), 'utf8'), /Ngân sách thấp nên một số món bị lặp\./);
+  assert.match(readFileSync(new URL('../src/spending-roadmap-screen.tsx', import.meta.url), 'utf8'), /Một số món hoặc nhóm món bị lặp \(ngân sách thấp hoặc ít món phù hợp\)\./);
   assert.throws(() => planSpending(emptyLedger(), { ...config, budget: '209999' }, meals, none, now));
 });
 
@@ -145,4 +145,35 @@ test('legacy snapshots remain readable and unchanged slots can be saved while ne
   duplicatePlan.meals[2].meal = duplicate;
   assert.throws(() => validatePlanSave({ ...state, spending: { ...state.spending, catalog: [...catalog, duplicate] } }, duplicatePlan, now, plan), /trùng món/);
   assert.throws(() => validatePlanSave(state, plan, now), /trùng món|khung bữa/);
+});
+
+for (const protection of ['past', 'locked', 'completed'] as const) {
+  test(`replanning preserves ${protection} legacy breakfast and dinner duplicates`, () => {
+    const menu = retrieveRoadmapMeals('Quận 10', '', catalog, false);
+    const initial = planSpending(emptyLedger(), config, menu, none, now);
+    const oldDay = initial.meals.filter(s => s.day === config.startDay);
+    oldDay[0].meal = dish('banh-mi');
+    oldDay[2].meal = dish('banh-mi');
+    if (protection !== 'past') for (const slot of [oldDay[0], oldDay[2]]) slot[protection] = true;
+    const replanNow = protection === 'past' ? '2026-10-19T01:00:00.000Z' : now;
+    const next = planSpending(emptyLedger(), config, menu, none, replanNow, initial);
+    for (const old of protection === 'past' ? oldDay : [oldDay[0], oldDay[2]]) {
+      assert.deepEqual(next.meals.find(s => s.day === old.day && s.index === old.index), old);
+    }
+    uniqueDays({ ...next, meals: next.meals.filter(s => s.day > config.startDay) });
+    if (protection !== 'past') assert.notEqual(next.meals[1].meal.id, dish('banh-mi').id);
+  });
+}
+
+test('mutable slots cannot repeat protected same-day meals', () => {
+  const menu = ['a', 'b', 'c'].map(id => ({ ...dish('com-tam'), id, price: '10000' }));
+  const oneDay = { ...config, endDay: config.startDay };
+  for (const protectedIndex of [0, 2]) {
+    const initial = planSpending(emptyLedger(), oneDay, menu, none, now);
+    initial.meals[protectedIndex].locked = true;
+    const next = planSpending(emptyLedger(), oneDay, menu, none, now, initial);
+    uniqueDays(next);
+    assert.deepEqual(next.meals[protectedIndex], initial.meals[protectedIndex]);
+    assert.throws(() => planSpending(emptyLedger(), oneDay, menu.filter(m => m.id !== initial.meals[(protectedIndex + 1) % 3].meal.id), none, now, initial));
+  }
 });
