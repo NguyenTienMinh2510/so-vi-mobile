@@ -24,9 +24,14 @@ Model IDs and official catalog links are in `src/index.ts`. Think is capped at
 4096 output tokens; the client waits up to 150 seconds. Incomplete thinking
 returns 502 `AI_TRUNCATED`; incomplete JSON fails safely into the app's fallback flow.
 
-Think uses [`@cf/qwen/qwen3-30b-a3b-fp8`](https://developers.cloudflare.com/workers-ai/models/qwen3-30b-a3b-fp8/),
-listed at $0.0509/M input and $0.335/M output tokens, versus
-[QwQ](https://developers.cloudflare.com/workers-ai/models/qwq-32b/) at $0.66/M and $1.00/M.
-Qwen's [official model card](https://huggingface.co/Qwen/Qwen3-30B-A3B-FP8)
-documents `/think` and `/no_think` prompt controls. We retain default thinking;
-Workers AI does not document a separate thinking-budget parameter for this model.
+Think uses [`@cf/openai/gpt-oss-120b`](https://developers.cloudflare.com/workers-ai/models/gpt-oss-120b/)
+with default `medium` reasoning. Its input schema documents no reasoning-level field,
+so the Worker sends `messages` and `max_tokens: 4096` without an extra reasoning option.
+Fast remains `@cf/meta/llama-3.1-8b-instruct-fp8`.
+
+The [official pricing](https://developers.cloudflare.com/workers-ai/platform/pricing/)
+is 31,818 Neurons/M input tokens and 68,182 Neurons/M output tokens. A request with
+2k input and 3k output tokens costs about 268 Neurons (roughly 270), or about
+35 requests/day within the shared free allocation of 10,000 Neurons/day; actual
+usage depends on token counts and other requests. This model needs no paid plan.
+Run `npx wrangler deploy` again to apply the model change to an existing Worker.

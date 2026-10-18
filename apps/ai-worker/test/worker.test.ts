@@ -23,7 +23,8 @@ test('body is capped by actual streamed bytes and mode/messages/schema are valid
   }
 });
 test('server selects models/token caps and separates reasoning tags or fields', async () => {
-  assert.equal(MODELS.think, '@cf/qwen/qwen3-30b-a3b-fp8');
+  assert.equal(MODELS.think, '@cf/openai/gpt-oss-120b');
+  assert.equal(MODELS.fast, '@cf/meta/llama-3.1-8b-instruct-fp8');
   for (const mode of ['think', 'fast'] as const) {
     const response = await worker.fetch(request({ ...body, mode }), { APP_TOKEN: token, AI: { run: async (model, input) => {
       assert.equal(model, MODELS[mode]); assert.equal(input.max_tokens, mode === 'think' ? 4096 : 512);
@@ -31,6 +32,32 @@ test('server selects models/token caps and separates reasoning tags or fields', 
     } } });
     assert.equal(response.status, 200); assert.deepEqual(await response.json(), mode === 'think' ? { content: '{"likedIds":[]}', reasoning: 'private thought' } : { content: '{}', reasoning: 'field' });
   }
+});
+test('think forwards system/user messages using the documented default reasoning', async () => {
+  const messages = [{ role: 'system', content: 'Return JSON' }, ...body.messages];
+  const response = await worker.fetch(request({ ...body, messages }), { APP_TOKEN: token, AI: { run: async (model, input) => {
+    assert.equal(model, '@cf/openai/gpt-oss-120b');
+    assert.deepEqual(JSON.parse(JSON.stringify(input)), { messages, max_tokens: 4096, stream: false });
+    return { choices: [{ message: { content: '{}', reasoning_content: 'thought' }, finish_reason: 'stop' }] };
+  } } });
+  assert.equal(response.status, 200); assert.deepEqual(await response.json(), { content: '{}', reasoning: 'thought' });
+});
+test('missing or empty answers distinguish token truncation from other AI failures', async () => {
+  for (const content of [undefined, null, '', '   ', '<think>private</think>']) {
+    for (const finish_reason of ['length', 'stop']) {
+      for (const output of [
+        { choices: [{ message: { content, reasoning_content: 'private' }, finish_reason }] },
+        { response: content, reasoning: 'private', finish_reason },
+      ]) {
+        const response = await worker.fetch(request(), { APP_TOKEN: token, AI: { run: async () => output } });
+        assert.equal(response.status, 502); assert.deepEqual(await response.json(), { error: finish_reason === 'length' ? 'AI_TRUNCATED' : 'AI_FAILED' });
+      }
+    }
+  }
+});
+test('an opening think tag after the last closing tag is still truncated', async () => {
+  const response = await worker.fetch(request(), { APP_TOKEN: token, AI: { run: async () => ({ response: '<think>first</think><think>unfinished' }) } });
+  assert.equal(response.status, 502); assert.deepEqual(await response.json(), { error: 'AI_TRUNCATED' });
 });
 test('AI failure, quota, malformed or unfinished output return short safe errors', async () => {
   for (const [output, status] of [[Error('internal prompt should never leak'), 502], [Object.assign(Error('quota exceeded'), { status: 429 }), 429], [{ unexpected: true }, 502]] as const) {
