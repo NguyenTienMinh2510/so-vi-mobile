@@ -7,13 +7,13 @@ import { formatMoney, localDateKey, parseMoneyInput } from './domain';
 import { errorMessage, newId, useLedger } from './store';
 import { useAppLock } from './app-lock';
 import { Button, Card, Choice, Icon, Page, colors, styles, toggle } from './ui';
-import { planSpending, protectedSlot, replaceMeal, spendingTotals, validatePlanSave, type MealOption, type MealSlot, type PlanConfig, type Preferences, type SpendingPlan } from './spending';
+import { planHasMealRepetition, planSpending, protectedSlot, replaceMeal, spendingTotals, validatePlanSave, type MealOption, type MealSlot, type PlanConfig, type Preferences, type SpendingPlan } from './spending';
 import { cloudThink, cloudFast, loadCloudSettings, saveCloudSettings, checkCloudConnection } from './spending-cloud';
 import { loadRoadmapMeals } from './spending-discovery';
 import { loadFoodVenues } from './spending-venues-native';
 import { FOOD_NOTICE, googleMapsSearch, assertGoogleMapsUrl, venueMapsUrl, venueEvidence, retrievedVenueContext, type FoodVenue } from './spending-venues';
 import { isPlanningEstimate, isCookedEstimate, cookedIngredients, mealFitsSlot } from './spending-meal-estimates';
-import { assertRoadmapFoodSafety, normalizeRoadmapText, parseRoadmapPrompt, reviewRoadmapPreferences, parseRoadmapPreferencesOffline, roadmapAiCatalog, roadmapAiAliases, restoreRoadmapAiPreferences, dishNames, localDishSignal, thinkingAliases, thinkingMenu, restoreThinkingPreferences, minimumEatOutCost } from './spending-roadmap';
+import { assertRoadmapFoodSafety, normalizeRoadmapText, parseRoadmapPrompt, reviewRoadmapPreferences, parseRoadmapPreferencesOffline, retrieveRoadmapMeals, dishNames, localDishSignal, thinkingAliases, thinkingMenu, restoreThinkingPreferences, minimumEatOutCost } from './spending-roadmap';
 import { Field } from './ui';
 
 const copy = <T,>(value: T): T => JSON.parse(JSON.stringify(value));
@@ -43,7 +43,7 @@ export function RoadmapScreen() {
   const stopElapsed = () => { if (elapsedTimer.current !== null) { clearInterval(elapsedTimer.current); elapsedTimer.current = null; } };
   const cancel = () => { generation.current++; controller.current?.abort(); stopElapsed(); if (mounted.current) { setWaiting(null); setCandidates(null); if (active.current) setBusy('Đang dừng thao tác…'); } };
   const edit = () => { try { latest.current.lock.assertUnlocked(); if (latest.current.lock.locked || latest.current.lock.covered || AppState.currentState !== 'active') throw new Error('Mở khóa ứng dụng trước khi sửa.'); } catch (e) { setError(errorMessage(e)); return false; } cancel(); setDirty(true); setError(''); return true; };
-  const updateDraft = (next: Draft) => { draftRef.current = next; setDraft(next); };
+  const updateDraft = (next: Draft) => { const warning = 'Ngân sách thấp nên một số món bị lặp.'; next = { ...next, warnings: [...next.warnings.filter(value => value !== warning), ...(planHasMealRepetition(next.plan) ? [warning] : [])] }; draftRef.current = next; setDraft(next); };
   useEffect(() => {
     mounted.current = true;
     void loadCloudSettings().then(value => { if (mounted.current && value) { setWorkerUrl(value.url); setWorkerToken(value.token); } }).catch(() => { if (mounted.current) setCloudStatus('Chưa đọc được thiết lập Worker.'); });
@@ -81,7 +81,7 @@ export function RoadmapScreen() {
     setWaiting(value => value ? { ...value, step: 1 } : value);
     // Cooked estimates join the menu only when cooking may be used: allowed by the user, or left open for the thinking planner.
     const mayCook = parsed.cooking === 'allow' || (thinks && parsed.cooking === 'unspecified');
-    const catalog = mayCook ? source.meals : source.meals.filter(m => m.mode !== 'cook'); let preferences = emptyPreferences();
+    const catalog = retrieveRoadmapMeals(parsed.area, parsed.preferenceText, source.meals, mayCook); let preferences = emptyPreferences();
     let allowCooking = parsed.cooking === 'allow', thinking: Draft['thinking'];
     const old = draftRef.current; const config: PlanConfig = { id: old?.plan.config.id ?? newId(), name: parsed.area, startDay: parsed.startDay, endDay: parsed.endDay, timezone: current.ledger.settings.timezone, budget: parsed.budget, reserve: parsed.reserve, mealsPerDay: parsed.mealsPerDay, allowCooking, ...copy(scope), fixed: scope.fixed.map(f => ({ ...f, amount: parseMoneyInput(f.amount) })) };
     let plan: SpendingPlan | null = null, thinkingFellBack = false; const warnings = [...source.warnings];
@@ -110,9 +110,8 @@ export function RoadmapScreen() {
       else {
         try {
           setBusy('AI trên mạng đọc sở thích…');
-          const aiCatalog = roadmapAiCatalog(parsed.preferenceText, catalog);
-          const proposed = await cloudFast(parsed.preferenceText || 'Không có sở thích; trả các danh sách rỗng.', roadmapAiAliases(aiCatalog), retrievedVenueContext(source.venues ?? []), aiCatalog.map(meal => dishNames(meal).filter(name => name !== normalizeRoadmapText(meal.name)).slice(0, 6)), controller.current.signal);
-          check(request, revision); preferences = restoreRoadmapAiPreferences(proposed, aiCatalog); reviewRoadmapPreferences(parsed.preferenceText, preferences, catalog);
+          const proposed = await cloudFast(parsed.preferenceText || 'Không có sở thích; trả các danh sách rỗng.', thinkingAliases(catalog), retrievedVenueContext(source.venues ?? []), catalog.map(meal => dishNames(meal).filter(name => name !== normalizeRoadmapText(meal.name)).slice(0, 6)), controller.current.signal);
+          check(request, revision); preferences = restoreThinkingPreferences(proposed, catalog); reviewRoadmapPreferences(parsed.preferenceText, preferences, catalog);
           warnings.push('Đã dùng chế độ nhanh trên mạng.');
         } catch {
           check(request, revision); const fallback = offline();

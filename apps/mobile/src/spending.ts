@@ -53,7 +53,7 @@ export function protectedSlot(m: MealSlot, today: string) { return m.day < today
 export function validatePlan(s: Ledger, p: SpendingPlan) {
   fields(p, p.version === undefined ? ['config', 'meals', 'preferences'] : ['config', 'meals', 'preferences', 'version']); if (p.version !== undefined && (!Number.isSafeInteger(p.version) || p.version < 1)) fail('Phiên bản kế hoạch không hợp lệ.');
   const days = validateConfig(s, p.config); if (!Array.isArray(p.meals) || p.meals.length !== days.length * p.config.mealsPerDay) fail('Kế hoạch chưa đủ bữa.');
-  const keys = new Set<string>(); for (const m of p.meals) { fields(m, ['day', 'index', 'meal', 'locked', 'completed', 'transactionId']); if (!days.includes(m.day) || !Number.isInteger(m.index) || m.index < 0 || m.index >= p.config.mealsPerDay || keys.has(`${m.day}/${m.index}`)) fail('Ngày hoặc số bữa không hợp lệ.'); keys.add(`${m.day}/${m.index}`); validateMeal(m.meal); if (!mealFitsSlot(m.meal, m.index, p.config.mealsPerDay)) fail('Món chưa phù hợp với khung bữa sáng.'); bool(m.locked); bool(m.completed); if (m.transactionId !== null) id(m.transactionId); }
+  const keys = new Set<string>(); for (const m of p.meals) { fields(m, ['day', 'index', 'meal', 'locked', 'completed', 'transactionId']); if (!days.includes(m.day) || !Number.isInteger(m.index) || m.index < 0 || m.index >= p.config.mealsPerDay || keys.has(`${m.day}/${m.index}`)) fail('Ngày hoặc số bữa không hợp lệ.'); keys.add(`${m.day}/${m.index}`); validateMeal(m.meal); bool(m.locked); bool(m.completed); if (m.transactionId !== null) id(m.transactionId); }
   validatePreferences(p.preferences, [...s.spending.catalog, ...p.meals.map(m => m.meal)]);
   const links = [...p.config.fixed.map(f => f.transactionId), ...p.meals.map(m => m.transactionId)].filter(x => x !== null); if (new Set(links).size !== links.length) fail('Liên kết giao dịch bị trùng.');
 }
@@ -61,7 +61,13 @@ function frequencyValid(meals: MealSlot[], days: string[], prefs: Preferences) {
 export function validatePlanSave(s: Ledger, p: SpendingPlan, now: string, previous?: SpendingPlan) {
   validatePlan(s, p); const days = validateConfig(s, p.config); const today = localDateKey(now, p.config.timezone);
   if (previous) for (const old of previous.meals) if (protectedSlot(old, today) && !same(old, p.meals.find(m => m.day === old.day && m.index === old.index))) fail('Bữa đã qua, khóa hoặc xác nhận phải giữ nguyên.');
-  for (const slot of p.meals) { const old = previous?.meals.find(m => m.day === slot.day && m.index === slot.index); if (!(old && protectedSlot(old, today)) && !allowed(slot.meal, p.config, p.preferences)) fail('Món không đáp ứng điều kiện đã duyệt.'); if (old && same(old.meal, slot.meal)) continue; const current = s.spending.catalog.find(m => m.id === slot.meal.id); if (!current || !same(current, slot.meal) || !allowed(slot.meal, p.config, p.preferences)) fail('Thực đơn hoặc điều kiện đã thay đổi. Tạo lại đề xuất trước khi lưu.'); }
+  for (const slot of p.meals) { const old = previous?.meals.find(m => m.day === slot.day && m.index === slot.index);
+    // Saved snapshots predate slot rules; enforce them only on new or changed slots.
+    if (!old || !same(old, slot)) {
+      if (!mealFitsSlot(slot.meal, slot.index, p.config.mealsPerDay)) fail('Món chưa phù hợp với khung bữa đã chọn.');
+      if (p.meals.some(other => other !== slot && other.day === slot.day && other.meal.id === slot.meal.id)) fail('Không xếp trùng món trong cùng ngày.');
+    }
+    if (!(old && protectedSlot(old, today)) && !allowed(slot.meal, p.config, p.preferences)) fail('Món không đáp ứng điều kiện đã duyệt.'); if (old && same(old.meal, slot.meal)) continue; const current = s.spending.catalog.find(m => m.id === slot.meal.id); if (!current || !same(current, slot.meal) || !allowed(slot.meal, p.config, p.preferences)) fail('Thực đơn hoặc điều kiện đã thay đổi. Tạo lại đề xuất trước khi lưu.'); }
   if (!frequencyValid(p.meals, days, p.preferences)) fail('Kế hoạch chưa đáp ứng tần suất đã duyệt.'); if (money(spendingTotals(s, p, now).remaining) < 0n) fail('Kế hoạch vượt ngân sách. Giữ dự phòng và xem phương án cân lại.');
 }
 export function validateSpending(s: Ledger) {
@@ -91,19 +97,47 @@ export function planSpending(s: Ledger, config: PlanConfig, catalog: MealOption[
   for (let offset = 0; offset < days.length; offset += 7) {
     const weekDays = days.slice(offset, offset + 7); const week = meals.filter(m => weekDays.includes(m.day)); const mutable = week.filter(m => !protectedSlot(m, today)); const counts = new Map<string, number>(); for (const m of week.filter(m => !mutable.includes(m))) { counts.set(m.meal.id, (counts.get(m.meal.id) ?? 0) + 1); funds -= cost(m); }
     const limits = preferences.frequency.map(f => ({ ...f, min: Math.ceil(f.min * weekDays.length / 7), max: Math.floor(f.max * weekDays.length / 7) }));
-    const cheapest = choices.reduce((n, m) => money(m.price) < n ? money(m.price) : n, money(choices[0].price)); const minimum = Array<bigint>(mutable.length + 1).fill(0n); for (let i = mutable.length - 1; i >= 0; i--) minimum[i] = minimum[i + 1] + (mutable[i].transactionId && paid.has(mutable[i].transactionId!) ? 0n : cheapest);
+    const minimum = Array<bigint>(mutable.length + 1).fill(0n);
+    for (let i = mutable.length - 1; i >= 0; i--) {
+      const fitting = choices.filter(m => mealFitsSlot(m, mutable[i].index, config.mealsPerDay));
+      if (!fitting.length) fail('Chưa có món phù hợp với khung bữa đã chọn.');
+      const cheapest = fitting.reduce((n, m) => money(m.price) < n ? money(m.price) : n, money(fitting[0].price));
+      minimum[i] = minimum[i + 1] + (mutable[i].transactionId && paid.has(mutable[i].transactionId!) ? 0n : cheapest);
+    }
     const search = (index: number, left: bigint): bigint | null => {
-      if (++nodes > 50000 || left < minimum[index] || limits.some(f => (counts.get(f.mealId) ?? 0) > f.max || (counts.get(f.mealId) ?? 0) + mutable.length - index < f.min)) return null;
+      if (nodes >= 50000) return null;
+      nodes++;
+      if (left < minimum[index] || limits.some(f => (counts.get(f.mealId) ?? 0) > f.max || (counts.get(f.mealId) ?? 0) + mutable.length - index < f.min)) return null;
       if (index === mutable.length) return limits.every(f => (counts.get(f.mealId) ?? 0) >= f.min) ? left : null;
-      const ordered = choices.filter(m => mealFitsSlot(m, mutable[index].index, config.mealsPerDay)).sort((a, b) => { const need = (m: MealOption) => limits.some(f => f.mealId === m.id && (counts.get(m.id) ?? 0) < f.min); if (need(a) !== need(b)) return need(a) ? -1 : 1; const ca = counts.get(a.id) ?? 0, cb = counts.get(b.id) ?? 0; if (ca !== cb) return ca - cb; const groupCount = (m: MealOption) => week.filter(slot => (protectedSlot(slot, today) || mutable.indexOf(slot) < index) && mealGroup(slot.meal) === mealGroup(m)).length; const ga = groupCount(a), gb = groupCount(b); if (ga !== gb) return ga - gb; if (preferences.likedIds.includes(a.id) !== preferences.likedIds.includes(b.id)) return preferences.likedIds.includes(a.id) ? -1 : 1; return money(a.price) < money(b.price) ? -1 : money(a.price) > money(b.price) ? 1 : a.id.localeCompare(b.id); });
+      const slot = mutable[index];
+      const assigned = meals.filter(m => protectedSlot(m, today) || m.day < weekDays[0] || mutable.indexOf(m) >= 0 && mutable.indexOf(m) < index);
+      const inDay = assigned.filter(m => m.day === slot.day);
+      const yesterday = new Date(day(slot.day) - 86400000).toISOString().slice(0, 10);
+      const ordered = choices.filter(m => mealFitsSlot(m, slot.index, config.mealsPerDay) && !inDay.some(other => other.meal.id === m.id)).sort((a, b) => {
+        const need = (m: MealOption) => limits.some(f => f.mealId === m.id && (counts.get(m.id) ?? 0) < f.min);
+        if (need(a) !== need(b)) return need(a) ? -1 : 1;
+        const group = (m: MealOption) => Number(inDay.some(other => mealGroup(other.meal) === mealGroup(m)));
+        if (group(a) !== group(b)) return group(a) - group(b);
+        const previousDay = (m: MealOption) => Number(assigned.some(other => other.day === yesterday && other.meal.id === m.id));
+        if (previousDay(a) !== previousDay(b)) return previousDay(a) - previousDay(b);
+        const ca = counts.get(a.id) ?? 0, cb = counts.get(b.id) ?? 0; if (ca !== cb) return ca - cb;
+        if (preferences.likedIds.includes(a.id) !== preferences.likedIds.includes(b.id)) return preferences.likedIds.includes(a.id) ? -1 : 1;
+        return money(a.price) < money(b.price) ? -1 : money(a.price) > money(b.price) ? 1 : a.id.localeCompare(b.id);
+      });
       for (const meal of ordered) { const slot = mutable[index]; slot.meal = clone(meal); counts.set(meal.id, (counts.get(meal.id) ?? 0) + 1); const answer = search(index + 1, left - cost(slot)); if (answer !== null) return answer; counts.set(meal.id, counts.get(meal.id)! - 1); } return null;
     };
     const reserved = futureMinimum(offset + 7); const answer = search(0, funds - reserved); if (answer === null) fail('Chưa tìm được phương án trong ngân sách và điều kiện đã chọn.'); funds = answer + reserved;
   }
+  if (meals.some((slot, i) => meals.some((other, j) => j < i && other.day === slot.day && other.meal.id === slot.meal.id))) fail('Không xếp trùng món trong cùng ngày.');
   if (!frequencyValid(meals, days, preferences) || money(spendingTotals(s, result, now).remaining) < 0n) fail('Chưa tìm được phương án trong ngân sách.'); return result;
 }
+export function planHasMealRepetition(plan: SpendingPlan): boolean {
+  return plan.meals.some((slot, i) => plan.meals.some((other, j) =>
+    (j < i && other.day === slot.day && mealGroup(other.meal) === mealGroup(slot.meal)) ||
+    (day(slot.day) - day(other.day) === 86400000 && other.meal.id === slot.meal.id)));
+}
 export function replaceMeal(s: Ledger, p: SpendingPlan, dayKey: string, index: number, newMealId: string, catalog: MealOption[], preferences: Preferences, now: string) {
-  const candidate = catalog.find(m => m.id === newMealId); if (candidate && !mealFitsSlot(candidate, index, p.config.mealsPerDay)) fail('Món chưa phù hợp với khung bữa sáng.');
-  validatePreferences(preferences, catalog); const next = clone(p); const slot = next.meals.find(m => m.day === dayKey && m.index === index); if (!slot || protectedSlot(slot, localDateKey(now, p.config.timezone))) fail('Không đổi bữa đã qua, khóa hoặc xác nhận.'); const meal = catalog.find(m => m.id === newMealId); if (!meal || !allowed(meal, p.config, preferences)) fail('Món không phù hợp với điều kiện.'); validateMeal(meal); const oldPrice = slot.meal.price; slot.meal = clone(meal); next.preferences = clone(preferences); return { plan: next, oldPrice, newPrice: meal.price, delta: (money(meal.price) - money(oldPrice)).toString(), remaining: spendingTotals(s, next, now).remaining };
+  const candidate = catalog.find(m => m.id === newMealId); if (candidate && !mealFitsSlot(candidate, index, p.config.mealsPerDay)) fail('Món chưa phù hợp với khung bữa đã chọn.');
+  validatePreferences(preferences, catalog); const next = clone(p); const slot = next.meals.find(m => m.day === dayKey && m.index === index); if (!slot || protectedSlot(slot, localDateKey(now, p.config.timezone))) fail('Không đổi bữa đã qua, khóa hoặc xác nhận.'); const meal = catalog.find(m => m.id === newMealId); if (!meal || !allowed(meal, p.config, preferences)) fail('Món không phù hợp với điều kiện.'); validateMeal(meal); if (next.meals.some(other => other !== slot && other.day === dayKey && other.meal.id === meal.id)) fail('Không xếp trùng món trong cùng ngày.'); const oldPrice = slot.meal.price; slot.meal = clone(meal); next.preferences = clone(preferences); return { plan: next, oldPrice, newPrice: meal.price, delta: (money(meal.price) - money(oldPrice)).toString(), remaining: spendingTotals(s, next, now).remaining };
 }
 export function parseAiPreferences(jsonText: string, catalog: MealOption[]): Preferences { if (typeof jsonText !== 'string' || jsonText.length > 12000) fail('Đầu ra AI quá dài.'); let parsed: Preferences; try { parsed = JSON.parse(jsonText); } catch { return fail('AI chưa trả về sở thích hợp lệ. Chọn trực tiếp hoặc thử lại.'); } return clone(validatePreferences(parsed, catalog)); }

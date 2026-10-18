@@ -1,5 +1,6 @@
 import { money, parseMoneyInput, timestamp } from './domain.ts';
 import { validatePreferences, type MealOption, type Preferences } from './spending.ts';
+import { mealFitsSlot } from './spending-meal-estimates.ts';
 import { FOOD_KNOWLEDGE } from './food-knowledge.generated.ts';
 
 export function normalizeRoadmapText(value: string, preferences = false): string {
@@ -42,6 +43,27 @@ export function localDishSignal(area: string, meal: MealOption): { area: string;
 /** Stable order: dishes with more venues named after them in the area first. */
 export function rankMealsForArea(area: string, catalog: MealOption[]): MealOption[] {
   return catalog.map((meal, i) => ({ meal, i, n: localDishSignal(area, meal)?.venues ?? -1 })).sort((a, b) => b.n - a.n || a.i - b.i).map(item => item.meal);
+}
+/** One bounded menu shared by the roadmap's AI and exact planner. */
+export function retrieveRoadmapMeals(area: string, text: string, catalog: MealOption[], allowCooking: boolean): MealOption[] {
+  const available = catalog.filter(meal => allowCooking || meal.mode !== 'cook');
+  const mentioned = normalizeRoadmapText(text, true).split(/[,;.]/).flatMap(clause => {
+    const name = clause.trim().replace(/^(?:an|thich|uu tien|khong an|khong thich|bo mon|loai tru)\s+/, '').replace(/\s*(?:it nhat|toi da|dung)\s*\d+.*/, '').trim();
+    return name.split(/\s+(?:va|hoac)\s+/).flatMap(part => matchCatalogDishes(part, available));
+  });
+  const ranked = rankMealsForArea(area, available), selected = new Map<string, MealOption>();
+  const add = (meal: MealOption) => selected.set(meal.id, meal);
+  mentioned.forEach(add);
+  if (allowCooking) available.filter(meal => meal.mode === 'cook').forEach(add);
+  // Reserve coverage before filling by popularity, so dinner-only dishes cannot crowd out breakfast.
+  for (let slot = 0; slot < 3; slot++) {
+    let count = [...selected.values()].filter(meal => mealFitsSlot(meal, slot, 3)).length;
+    for (const meal of ranked) if (count < 4 && !selected.has(meal.id) && mealFitsSlot(meal, slot, 3)) { add(meal); count++; }
+    if (count < 4) throw new Error('Thực đơn chưa đủ 4 món cho mỗi bữa sáng, trưa và tối.');
+  }
+  if (selected.size > THINKING_MENU) throw new Error('Món được nhắc và các bữa cần hơn 32 món. Dùng tên món cụ thể hoặc ít điều kiện hơn.');
+  for (const meal of ranked) if (selected.size < THINKING_MENU && !selected.has(meal.id)) add(meal);
+  return [...selected.values()];
 }
 export type RoadmapCooking = 'allow' | 'deny' | 'unspecified';
 const COOKING_CLAUSE = /^(?:(?:co the|duoc|cho phep|muon|khong|chang|ko)\s+)*(?:(?:the|muon|duoc|co)\s+)?(?:tu\s+)?nau(?:\s+(?:an|com|duoc|o nha|tai nha|it|mot so bua|vai bua|buoi toi|bua toi))*(?:\s+(?:duoc|nhe))?$/;
@@ -124,7 +146,7 @@ export function parseRoadmapPrompt(text: string, today: string) {
 export function assertRoadmapFoodSafety(text: string, preferences?: Preferences) {
   if (/di ung|allerg|nguyen lieu|thanh phan|an toan|khong (?:co|chua)|khong dung|kieng|chay|vegan|vegetarian|gluten|lactose|halal/.test(normalizeRoadmapText(text)) || preferences?.excludedAllergens.length) throw new Error('Nguồn chưa xác nhận nguyên liệu hoặc dị ứng. Không thể lập roadmap an toàn theo điều kiện này.');
 }
-// 8 dishes keep every bún/bánh family of the 22 estimates inside the 4B prompt budget.
+// Legacy local fast mode keeps a smaller menu inside the 4B prompt budget.
 export const ROADMAP_AI_MEALS = 8;
 export function roadmapAiCatalog(text: string, catalog: MealOption[]): MealOption[] {
   assertFrequencyPeriods(text);
@@ -231,7 +253,7 @@ export function reviewRoadmapPreferences(text: string, proposed: Preferences, ca
 }
 
 export const THINKING_MENU = 32;
-/** Thinking mode sees the whole estimate menu (≤32) with breakfast fit and local venue-name signal. */
+/** Thinking mode sees the retrieved menu (≤32) with breakfast fit and local venue-name signal. */
 export function thinkingAliases(catalog: MealOption[]): MealOption[] {
   if (!Array.isArray(catalog) || catalog.length < 1 || catalog.length > THINKING_MENU || new Set(catalog.map(m => m.id)).size !== catalog.length) throw new Error('AI suy nghĩ cần 1–32 món có mã riêng.');
   return catalog.map((meal, i) => ({ ...meal, allergens: [...meal.allergens], id: `m${i + 1}` }));

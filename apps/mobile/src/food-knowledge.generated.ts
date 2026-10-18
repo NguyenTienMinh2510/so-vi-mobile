@@ -35,62 +35,62 @@ export const FOOD_KNOWLEDGE = {
     "banh mi",
     "banh my"
    ],
-   "total": 880,
+   "total": 793,
    "areas": {
-    "binh chanh": 16,
-    "binh tan": 25,
-    "binh thanh": 77,
+    "binh chanh": 12,
+    "binh tan": 23,
+    "binh thanh": 72,
     "cu chi": 8,
-    "go vap": 58,
-    "ho chi minh": 880,
-    "hoc mon": 15,
+    "go vap": 47,
+    "ho chi minh": 793,
+    "hoc mon": 14,
     "nha be": 9,
-    "phu nhuan": 46,
-    "quan 1": 110,
-    "quan 10": 46,
+    "phu nhuan": 45,
+    "quan 1": 103,
+    "quan 10": 40,
     "quan 11": 17,
     "quan 12": 27,
     "quan 2": 1,
-    "quan 3": 64,
-    "quan 4": 20,
-    "quan 5": 31,
-    "quan 6": 26,
-    "quan 7": 48,
-    "quan 8": 23,
-    "tan binh": 71,
-    "tan phu": 54,
-    "thu duc": 92
+    "quan 3": 62,
+    "quan 4": 16,
+    "quan 5": 28,
+    "quan 6": 21,
+    "quan 7": 44,
+    "quan 8": 21,
+    "tan binh": 63,
+    "tan phu": 47,
+    "thu duc": 76
    }
   },
   "pho": {
    "aliases": [
     "pho"
    ],
-   "total": 1161,
+   "total": 1043,
    "areas": {
-    "binh chanh": 30,
-    "binh tan": 37,
-    "binh thanh": 98,
-    "cu chi": 17,
-    "go vap": 83,
-    "ho chi minh": 1161,
-    "hoc mon": 21,
-    "nha be": 12,
-    "phu nhuan": 39,
-    "quan 1": 93,
-    "quan 10": 44,
-    "quan 11": 18,
-    "quan 12": 48,
+    "binh chanh": 28,
+    "binh tan": 35,
+    "binh thanh": 82,
+    "cu chi": 15,
+    "go vap": 71,
+    "ho chi minh": 1043,
+    "hoc mon": 20,
+    "nha be": 10,
+    "phu nhuan": 34,
+    "quan 1": 78,
+    "quan 10": 37,
+    "quan 11": 16,
+    "quan 12": 47,
     "quan 2": 6,
-    "quan 3": 71,
+    "quan 3": 65,
     "quan 4": 30,
-    "quan 5": 29,
-    "quan 6": 25,
-    "quan 7": 104,
-    "quan 8": 22,
-    "tan binh": 104,
-    "tan phu": 71,
-    "thu duc": 160
+    "quan 5": 27,
+    "quan 6": 24,
+    "quan 7": 88,
+    "quan 8": 21,
+    "tan binh": 94,
+    "tan phu": 68,
+    "thu duc": 148
    }
   },
   "bun-bo": {
@@ -131,61 +131,61 @@ export const FOOD_KNOWLEDGE = {
     "hu tieu nam vang",
     "hu tiu"
    ],
-   "total": 818,
+   "total": 763,
    "areas": {
-    "binh chanh": 10,
-    "binh tan": 45,
-    "binh thanh": 55,
+    "binh chanh": 9,
+    "binh tan": 42,
+    "binh thanh": 54,
     "cu chi": 7,
-    "go vap": 43,
-    "ho chi minh": 818,
-    "hoc mon": 15,
+    "go vap": 37,
+    "ho chi minh": 763,
+    "hoc mon": 14,
     "nha be": 5,
-    "phu nhuan": 30,
-    "quan 1": 72,
-    "quan 10": 60,
+    "phu nhuan": 26,
+    "quan 1": 70,
+    "quan 10": 58,
     "quan 11": 38,
-    "quan 12": 28,
+    "quan 12": 24,
     "quan 2": 1,
-    "quan 3": 40,
+    "quan 3": 38,
     "quan 4": 24,
-    "quan 5": 65,
-    "quan 6": 49,
-    "quan 7": 35,
-    "quan 8": 39,
-    "tan binh": 51,
-    "tan phu": 48,
-    "thu duc": 60
+    "quan 5": 64,
+    "quan 6": 47,
+    "quan 7": 30,
+    "quan 8": 37,
+    "tan binh": 46,
+    "tan phu": 44,
+    "thu duc": 52
    }
   },
   "xoi": {
    "aliases": [
     "xoi"
    ],
-   "total": 232,
+   "total": 191,
    "areas": {
-    "binh chanh": 4,
+    "binh chanh": 3,
     "binh tan": 4,
-    "binh thanh": 25,
-    "cu chi": 4,
-    "go vap": 21,
-    "ho chi minh": 232,
+    "binh thanh": 21,
+    "cu chi": 3,
+    "go vap": 17,
+    "ho chi minh": 191,
     "hoc mon": 2,
     "nha be": 1,
-    "phu nhuan": 9,
-    "quan 1": 25,
+    "phu nhuan": 8,
+    "quan 1": 17,
     "quan 10": 9,
-    "quan 11": 7,
-    "quan 12": 12,
-    "quan 3": 12,
+    "quan 11": 5,
+    "quan 12": 11,
+    "quan 3": 7,
     "quan 4": 5,
-    "quan 5": 12,
+    "quan 5": 10,
     "quan 6": 8,
-    "quan 7": 15,
-    "quan 8": 4,
-    "tan binh": 26,
-    "tan phu": 11,
-    "thu duc": 19
+    "quan 7": 14,
+    "quan 8": 3,
+    "tan binh": 20,
+    "tan phu": 10,
+    "thu duc": 17
    }
   },
   "banh-cuon": {
@@ -224,30 +224,30 @@ export const FOOD_KNOWLEDGE = {
     "chao long",
     "chao vit"
    ],
-   "total": 510,
+   "total": 482,
    "areas": {
     "binh chanh": 13,
     "binh tan": 25,
-    "binh thanh": 45,
+    "binh thanh": 39,
     "cu chi": 7,
-    "go vap": 51,
-    "ho chi minh": 510,
-    "hoc mon": 15,
+    "go vap": 49,
+    "ho chi minh": 482,
+    "hoc mon": 14,
     "nha be": 6,
-    "phu nhuan": 14,
-    "quan 1": 25,
-    "quan 10": 27,
+    "phu nhuan": 13,
+    "quan 1": 21,
+    "quan 10": 24,
     "quan 11": 8,
     "quan 12": 27,
     "quan 3": 12,
-    "quan 4": 16,
+    "quan 4": 14,
     "quan 5": 20,
     "quan 6": 17,
-    "quan 7": 27,
+    "quan 7": 25,
     "quan 8": 16,
-    "tan binh": 46,
-    "tan phu": 35,
-    "thu duc": 56
+    "tan binh": 44,
+    "tan phu": 32,
+    "thu duc": 54
    }
   },
   "bun-rieu": {
@@ -317,30 +317,30 @@ export const FOOD_KNOWLEDGE = {
     "com ga",
     "ga xoi mo"
    ],
-   "total": 409,
+   "total": 255,
    "areas": {
-    "binh chanh": 4,
-    "binh tan": 17,
-    "binh thanh": 36,
-    "cu chi": 4,
-    "go vap": 36,
-    "ho chi minh": 409,
-    "hoc mon": 6,
-    "nha be": 2,
-    "phu nhuan": 15,
-    "quan 1": 33,
-    "quan 10": 17,
-    "quan 11": 12,
-    "quan 12": 18,
-    "quan 3": 13,
-    "quan 4": 11,
-    "quan 5": 19,
-    "quan 6": 17,
-    "quan 7": 12,
-    "quan 8": 11,
-    "tan binh": 42,
-    "tan phu": 50,
-    "thu duc": 35
+    "binh chanh": 1,
+    "binh tan": 10,
+    "binh thanh": 18,
+    "cu chi": 2,
+    "go vap": 21,
+    "ho chi minh": 255,
+    "hoc mon": 5,
+    "nha be": 1,
+    "phu nhuan": 11,
+    "quan 1": 20,
+    "quan 10": 12,
+    "quan 11": 7,
+    "quan 12": 14,
+    "quan 3": 7,
+    "quan 4": 9,
+    "quan 5": 9,
+    "quan 6": 13,
+    "quan 7": 7,
+    "quan 8": 5,
+    "tan binh": 27,
+    "tan phu": 33,
+    "thu duc": 23
    }
   },
   "bun-thit-nuong": {
@@ -681,6 +681,1370 @@ export const FOOD_KNOWLEDGE = {
     "tan binh": 4,
     "tan phu": 3,
     "thu duc": 2
+   }
+  },
+  "com-chay": {
+   "aliases": [
+    "com chay"
+   ],
+   "total": 176,
+   "areas": {
+    "binh chanh": 1,
+    "binh tan": 9,
+    "binh thanh": 21,
+    "cu chi": 1,
+    "go vap": 13,
+    "ho chi minh": 176,
+    "hoc mon": 4,
+    "nha be": 1,
+    "phu nhuan": 7,
+    "quan 1": 10,
+    "quan 10": 9,
+    "quan 11": 2,
+    "quan 12": 11,
+    "quan 3": 6,
+    "quan 4": 9,
+    "quan 5": 5,
+    "quan 6": 7,
+    "quan 7": 7,
+    "quan 8": 8,
+    "tan binh": 19,
+    "tan phu": 19,
+    "thu duc": 9
+   }
+  },
+  "com-nieu": {
+   "aliases": [
+    "com nieu"
+   ],
+   "total": 119,
+   "areas": {
+    "binh chanh": 4,
+    "binh tan": 4,
+    "binh thanh": 15,
+    "cu chi": 4,
+    "go vap": 5,
+    "ho chi minh": 119,
+    "hoc mon": 1,
+    "phu nhuan": 4,
+    "quan 1": 8,
+    "quan 10": 3,
+    "quan 11": 1,
+    "quan 12": 4,
+    "quan 2": 1,
+    "quan 3": 7,
+    "quan 4": 1,
+    "quan 5": 2,
+    "quan 6": 3,
+    "quan 7": 7,
+    "quan 8": 1,
+    "tan binh": 13,
+    "tan phu": 6,
+    "thu duc": 22
+   }
+  },
+  "com-van-phong": {
+   "aliases": [
+    "com van phong"
+   ],
+   "total": 48,
+   "areas": {
+    "binh chanh": 1,
+    "binh thanh": 3,
+    "go vap": 3,
+    "ho chi minh": 48,
+    "phu nhuan": 4,
+    "quan 1": 5,
+    "quan 10": 5,
+    "quan 12": 1,
+    "quan 3": 2,
+    "quan 4": 4,
+    "quan 5": 1,
+    "quan 7": 3,
+    "quan 8": 1,
+    "tan binh": 9,
+    "tan phu": 3,
+    "thu duc": 4
+   }
+  },
+  "com-chien": {
+   "aliases": [
+    "com chien"
+   ],
+   "total": 38,
+   "areas": {
+    "binh thanh": 2,
+    "go vap": 3,
+    "ho chi minh": 38,
+    "hoc mon": 1,
+    "phu nhuan": 1,
+    "quan 1": 7,
+    "quan 10": 1,
+    "quan 12": 3,
+    "quan 3": 1,
+    "quan 4": 3,
+    "quan 6": 2,
+    "quan 7": 1,
+    "quan 8": 1,
+    "tan binh": 3,
+    "tan phu": 3,
+    "thu duc": 6
+   }
+  },
+  "com-ga-xoi-mo": {
+   "aliases": [
+    "com ga xoi mo"
+   ],
+   "total": 138,
+   "areas": {
+    "binh chanh": 3,
+    "binh tan": 7,
+    "binh thanh": 18,
+    "cu chi": 2,
+    "go vap": 15,
+    "ho chi minh": 138,
+    "hoc mon": 2,
+    "nha be": 1,
+    "phu nhuan": 2,
+    "quan 1": 8,
+    "quan 10": 4,
+    "quan 11": 3,
+    "quan 12": 5,
+    "quan 3": 5,
+    "quan 4": 2,
+    "quan 5": 8,
+    "quan 6": 4,
+    "quan 7": 3,
+    "quan 8": 6,
+    "tan binh": 14,
+    "tan phu": 16,
+    "thu duc": 10
+   }
+  },
+  "com-ga-hai-nam": {
+   "aliases": [
+    "com ga hai nam"
+   ],
+   "total": 21,
+   "areas": {
+    "binh tan": 1,
+    "go vap": 1,
+    "ho chi minh": 21,
+    "phu nhuan": 2,
+    "quan 1": 6,
+    "quan 10": 1,
+    "quan 11": 2,
+    "quan 3": 1,
+    "quan 5": 2,
+    "quan 7": 2,
+    "tan binh": 1,
+    "tan phu": 1,
+    "thu duc": 2
+   }
+  },
+  "com-tho": {
+   "aliases": [
+    "com tho"
+   ],
+   "total": 17,
+   "areas": {
+    "binh tan": 1,
+    "go vap": 1,
+    "ho chi minh": 17,
+    "phu nhuan": 1,
+    "quan 1": 2,
+    "quan 10": 1,
+    "quan 3": 1,
+    "quan 6": 1,
+    "quan 7": 1,
+    "tan binh": 2,
+    "tan phu": 1,
+    "thu duc": 4
+   }
+  },
+  "com-bac": {
+   "aliases": [
+    "com bac"
+   ],
+   "total": 11,
+   "areas": {
+    "binh thanh": 1,
+    "go vap": 2,
+    "ho chi minh": 11,
+    "quan 1": 6,
+    "quan 3": 1,
+    "tan binh": 1
+   }
+  },
+  "com-que": {
+   "aliases": [
+    "com que"
+   ],
+   "total": 17,
+   "areas": {
+    "binh tan": 1,
+    "binh thanh": 1,
+    "ho chi minh": 17,
+    "hoc mon": 1,
+    "phu nhuan": 1,
+    "quan 1": 1,
+    "quan 3": 2,
+    "quan 6": 1,
+    "quan 7": 2,
+    "tan binh": 4,
+    "thu duc": 3
+   }
+  },
+  "bun-moc": {
+   "aliases": [
+    "bun moc"
+   ],
+   "total": 49,
+   "areas": {
+    "binh tan": 2,
+    "binh thanh": 1,
+    "ho chi minh": 49,
+    "hoc mon": 1,
+    "phu nhuan": 2,
+    "quan 1": 2,
+    "quan 10": 1,
+    "quan 12": 4,
+    "quan 3": 6,
+    "quan 4": 1,
+    "quan 6": 2,
+    "quan 7": 2,
+    "quan 8": 7,
+    "tan binh": 12,
+    "tan phu": 1,
+    "thu duc": 5
+   }
+  },
+  "bun-oc": {
+   "aliases": [
+    "bun oc"
+   ],
+   "total": 11,
+   "areas": {
+    "go vap": 1,
+    "ho chi minh": 11,
+    "phu nhuan": 1,
+    "quan 1": 2,
+    "quan 3": 1,
+    "quan 7": 2,
+    "tan binh": 2,
+    "tan phu": 1,
+    "thu duc": 1
+   }
+  },
+  "bun-thai": {
+   "aliases": [
+    "bun thai"
+   ],
+   "total": 45,
+   "areas": {
+    "binh tan": 1,
+    "binh thanh": 2,
+    "go vap": 6,
+    "ho chi minh": 45,
+    "hoc mon": 1,
+    "quan 1": 2,
+    "quan 10": 6,
+    "quan 11": 3,
+    "quan 12": 3,
+    "quan 3": 2,
+    "quan 4": 1,
+    "quan 6": 1,
+    "quan 7": 4,
+    "quan 8": 2,
+    "tan binh": 5,
+    "tan phu": 1,
+    "thu duc": 5
+   }
+  },
+  "bun-nuoc-leo": {
+   "aliases": [
+    "bun nuoc leo"
+   ],
+   "total": 23,
+   "areas": {
+    "binh chanh": 1,
+    "binh tan": 1,
+    "binh thanh": 3,
+    "go vap": 2,
+    "ho chi minh": 23,
+    "phu nhuan": 3,
+    "quan 1": 2,
+    "quan 10": 3,
+    "quan 4": 1,
+    "quan 5": 3,
+    "quan 8": 1,
+    "tan phu": 2,
+    "thu duc": 1
+   }
+  },
+  "bun-quay": {
+   "aliases": [
+    "bun quay"
+   ],
+   "total": 24,
+   "areas": {
+    "binh tan": 2,
+    "go vap": 2,
+    "ho chi minh": 24,
+    "hoc mon": 1,
+    "phu nhuan": 1,
+    "quan 1": 3,
+    "quan 10": 2,
+    "quan 11": 1,
+    "quan 12": 1,
+    "quan 3": 2,
+    "quan 6": 1,
+    "quan 7": 1,
+    "tan binh": 1,
+    "tan phu": 3,
+    "thu duc": 3
+   }
+  },
+  "mi-vit-tiem": {
+   "aliases": [
+    "mi vit tiem"
+   ],
+   "total": 32,
+   "areas": {
+    "binh thanh": 3,
+    "go vap": 1,
+    "ho chi minh": 32,
+    "hoc mon": 2,
+    "phu nhuan": 4,
+    "quan 1": 2,
+    "quan 10": 3,
+    "quan 4": 3,
+    "quan 5": 6,
+    "quan 6": 1,
+    "tan binh": 2,
+    "tan phu": 4,
+    "thu duc": 1
+   }
+  },
+  "mi-sui-cao": {
+   "aliases": [
+    "mi sui cao"
+   ],
+   "total": 14,
+   "areas": {
+    "binh thanh": 3,
+    "go vap": 1,
+    "ho chi minh": 14,
+    "nha be": 1,
+    "phu nhuan": 1,
+    "quan 10": 1,
+    "quan 3": 2,
+    "quan 6": 1,
+    "quan 8": 1,
+    "tan binh": 2,
+    "thu duc": 1
+   }
+  },
+  "mi-ga": {
+   "aliases": [
+    "mi ga"
+   ],
+   "total": 41,
+   "areas": {
+    "binh tan": 4,
+    "binh thanh": 2,
+    "cu chi": 1,
+    "go vap": 4,
+    "ho chi minh": 41,
+    "hoc mon": 1,
+    "phu nhuan": 2,
+    "quan 1": 4,
+    "quan 10": 3,
+    "quan 11": 3,
+    "quan 12": 1,
+    "quan 3": 2,
+    "quan 4": 1,
+    "quan 5": 3,
+    "quan 6": 1,
+    "quan 8": 1,
+    "tan binh": 3,
+    "tan phu": 2,
+    "thu duc": 3
+   }
+  },
+  "mi-bo": {
+   "aliases": [
+    "mi bo"
+   ],
+   "total": 24,
+   "areas": {
+    "binh tan": 1,
+    "binh thanh": 4,
+    "ho chi minh": 24,
+    "nha be": 1,
+    "phu nhuan": 1,
+    "quan 1": 4,
+    "quan 11": 2,
+    "quan 12": 1,
+    "quan 3": 3,
+    "quan 4": 1,
+    "quan 5": 3,
+    "quan 6": 1,
+    "quan 8": 1,
+    "thu duc": 1
+   }
+  },
+  "mi-cay": {
+   "aliases": [
+    "mi cay"
+   ],
+   "total": 269,
+   "areas": {
+    "binh chanh": 13,
+    "binh tan": 27,
+    "binh thanh": 12,
+    "cu chi": 13,
+    "go vap": 22,
+    "ho chi minh": 269,
+    "hoc mon": 11,
+    "nha be": 4,
+    "phu nhuan": 2,
+    "quan 1": 11,
+    "quan 10": 7,
+    "quan 11": 5,
+    "quan 12": 21,
+    "quan 3": 2,
+    "quan 4": 4,
+    "quan 5": 7,
+    "quan 6": 9,
+    "quan 7": 11,
+    "quan 8": 12,
+    "tan binh": 17,
+    "tan phu": 22,
+    "thu duc": 31
+   }
+  },
+  "mi-y": {
+   "aliases": [
+    "mi y"
+   ],
+   "total": 26,
+   "areas": {
+    "binh tan": 1,
+    "binh thanh": 4,
+    "go vap": 2,
+    "ho chi minh": 26,
+    "phu nhuan": 1,
+    "quan 1": 7,
+    "quan 10": 3,
+    "quan 11": 1,
+    "quan 4": 1,
+    "quan 5": 3,
+    "quan 7": 1,
+    "quan 8": 1,
+    "tan binh": 1,
+    "thu duc": 1
+   }
+  },
+  "mi-tron": {
+   "aliases": [
+    "mi tron"
+   ],
+   "total": 69,
+   "areas": {
+    "binh chanh": 2,
+    "binh tan": 3,
+    "binh thanh": 10,
+    "go vap": 8,
+    "ho chi minh": 69,
+    "hoc mon": 3,
+    "nha be": 1,
+    "quan 1": 2,
+    "quan 10": 2,
+    "quan 12": 3,
+    "quan 3": 5,
+    "quan 4": 3,
+    "quan 6": 5,
+    "quan 7": 1,
+    "quan 8": 4,
+    "tan phu": 4,
+    "thu duc": 12
+   }
+  },
+  "mien-ga": {
+   "aliases": [
+    "mien ga"
+   ],
+   "total": 15,
+   "areas": {
+    "binh thanh": 1,
+    "go vap": 2,
+    "ho chi minh": 15,
+    "phu nhuan": 1,
+    "quan 1": 2,
+    "quan 3": 3,
+    "tan binh": 3,
+    "tan phu": 2,
+    "thu duc": 1
+   }
+  },
+  "banh-hoi": {
+   "aliases": [
+    "banh hoi"
+   ],
+   "total": 18,
+   "areas": {
+    "binh thanh": 5,
+    "go vap": 3,
+    "ho chi minh": 18,
+    "phu nhuan": 2,
+    "quan 3": 1,
+    "quan 5": 1,
+    "quan 6": 1,
+    "quan 7": 1,
+    "tan binh": 1,
+    "tan phu": 1,
+    "thu duc": 2
+   }
+  },
+  "banh-can": {
+   "aliases": [
+    "banh can"
+   ],
+   "total": 28,
+   "areas": {
+    "binh thanh": 3,
+    "go vap": 2,
+    "ho chi minh": 28,
+    "phu nhuan": 2,
+    "quan 1": 1,
+    "quan 10": 3,
+    "quan 3": 2,
+    "quan 4": 1,
+    "quan 5": 2,
+    "quan 6": 1,
+    "quan 7": 1,
+    "tan binh": 2,
+    "tan phu": 3,
+    "thu duc": 5
+   }
+  },
+  "banh-khot": {
+   "aliases": [
+    "banh khot"
+   ],
+   "total": 34,
+   "areas": {
+    "binh chanh": 1,
+    "binh tan": 3,
+    "binh thanh": 2,
+    "go vap": 2,
+    "ho chi minh": 34,
+    "hoc mon": 1,
+    "phu nhuan": 1,
+    "quan 1": 3,
+    "quan 10": 3,
+    "quan 12": 1,
+    "quan 3": 1,
+    "quan 5": 1,
+    "quan 6": 3,
+    "quan 8": 2,
+    "tan binh": 5,
+    "tan phu": 2,
+    "thu duc": 3
+   }
+  },
+  "banh-beo": {
+   "aliases": [
+    "banh beo"
+   ],
+   "total": 79,
+   "areas": {
+    "binh chanh": 2,
+    "binh tan": 3,
+    "binh thanh": 7,
+    "cu chi": 1,
+    "go vap": 8,
+    "ho chi minh": 79,
+    "hoc mon": 1,
+    "phu nhuan": 3,
+    "quan 1": 7,
+    "quan 10": 5,
+    "quan 11": 1,
+    "quan 3": 7,
+    "quan 4": 2,
+    "quan 5": 2,
+    "quan 6": 1,
+    "quan 7": 2,
+    "quan 8": 1,
+    "tan binh": 13,
+    "tan phu": 5,
+    "thu duc": 7
+   }
+  },
+  "banh-bot-loc": {
+   "aliases": [
+    "banh bot loc"
+   ],
+   "total": 21,
+   "areas": {
+    "binh thanh": 1,
+    "go vap": 2,
+    "ho chi minh": 21,
+    "phu nhuan": 2,
+    "quan 1": 2,
+    "quan 10": 1,
+    "quan 11": 1,
+    "quan 12": 2,
+    "quan 3": 1,
+    "quan 5": 1,
+    "quan 6": 1,
+    "quan 7": 2,
+    "tan phu": 1,
+    "thu duc": 3
+   }
+  },
+  "banh-trang-cuon": {
+   "aliases": [
+    "banh trang cuon"
+   ],
+   "total": 14,
+   "areas": {
+    "binh tan": 1,
+    "binh thanh": 2,
+    "go vap": 2,
+    "ho chi minh": 14,
+    "quan 4": 2,
+    "quan 5": 2,
+    "quan 7": 1,
+    "tan binh": 3
+   }
+  },
+  "nem-nuong": {
+   "aliases": [
+    "nem nuong"
+   ],
+   "total": 151,
+   "areas": {
+    "binh tan": 4,
+    "binh thanh": 25,
+    "go vap": 20,
+    "ho chi minh": 151,
+    "hoc mon": 2,
+    "nha be": 1,
+    "phu nhuan": 5,
+    "quan 1": 12,
+    "quan 10": 8,
+    "quan 11": 2,
+    "quan 12": 8,
+    "quan 3": 2,
+    "quan 4": 3,
+    "quan 5": 4,
+    "quan 6": 3,
+    "quan 7": 3,
+    "quan 8": 2,
+    "tan binh": 12,
+    "tan phu": 9,
+    "thu duc": 25
+   }
+  },
+  "goi-cuon": {
+   "aliases": [
+    "goi cuon"
+   ],
+   "total": 26,
+   "areas": {
+    "binh thanh": 2,
+    "go vap": 1,
+    "ho chi minh": 26,
+    "hoc mon": 1,
+    "quan 1": 5,
+    "quan 10": 3,
+    "quan 11": 3,
+    "quan 12": 1,
+    "quan 3": 2,
+    "quan 5": 1,
+    "quan 6": 1,
+    "quan 7": 2,
+    "tan binh": 4
+   }
+  },
+  "bo-kho": {
+   "aliases": [
+    "bo kho"
+   ],
+   "total": 61,
+   "areas": {
+    "binh chanh": 1,
+    "binh tan": 1,
+    "binh thanh": 8,
+    "go vap": 2,
+    "ho chi minh": 61,
+    "nha be": 1,
+    "phu nhuan": 3,
+    "quan 1": 5,
+    "quan 10": 4,
+    "quan 11": 3,
+    "quan 12": 3,
+    "quan 3": 5,
+    "quan 4": 3,
+    "quan 5": 1,
+    "quan 6": 1,
+    "quan 7": 3,
+    "quan 8": 1,
+    "tan binh": 9,
+    "tan phu": 1,
+    "thu duc": 4
+   }
+  },
+  "bo-bit-tet": {
+   "aliases": [
+    "bo bit tet"
+   ],
+   "total": 43,
+   "areas": {
+    "binh chanh": 3,
+    "binh tan": 3,
+    "binh thanh": 3,
+    "cu chi": 2,
+    "go vap": 1,
+    "ho chi minh": 43,
+    "hoc mon": 3,
+    "quan 1": 1,
+    "quan 10": 3,
+    "quan 11": 2,
+    "quan 12": 1,
+    "quan 3": 1,
+    "quan 4": 1,
+    "quan 5": 1,
+    "quan 6": 1,
+    "quan 7": 2,
+    "tan binh": 5,
+    "tan phu": 5,
+    "thu duc": 5
+   }
+  },
+  "bo-la-lot": {
+   "aliases": [
+    "bo la lot"
+   ],
+   "total": 30,
+   "areas": {
+    "binh thanh": 3,
+    "go vap": 2,
+    "ho chi minh": 30,
+    "phu nhuan": 1,
+    "quan 1": 6,
+    "quan 10": 2,
+    "quan 11": 1,
+    "quan 3": 2,
+    "quan 4": 2,
+    "quan 5": 1,
+    "quan 6": 1,
+    "quan 7": 2,
+    "quan 8": 3,
+    "tan phu": 2,
+    "thu duc": 2
+   }
+  },
+  "bo-nuong": {
+   "aliases": [
+    "bo nuong"
+   ],
+   "total": 67,
+   "areas": {
+    "binh chanh": 1,
+    "binh tan": 3,
+    "binh thanh": 3,
+    "cu chi": 2,
+    "go vap": 4,
+    "ho chi minh": 67,
+    "nha be": 1,
+    "phu nhuan": 6,
+    "quan 1": 6,
+    "quan 10": 2,
+    "quan 11": 2,
+    "quan 12": 4,
+    "quan 3": 7,
+    "quan 4": 1,
+    "quan 5": 3,
+    "quan 6": 3,
+    "quan 7": 6,
+    "tan binh": 3,
+    "tan phu": 4,
+    "thu duc": 6
+   }
+  },
+  "ga-nuong": {
+   "aliases": [
+    "ga nuong"
+   ],
+   "total": 207,
+   "areas": {
+    "binh chanh": 3,
+    "binh tan": 14,
+    "binh thanh": 22,
+    "cu chi": 5,
+    "go vap": 21,
+    "ho chi minh": 207,
+    "hoc mon": 6,
+    "nha be": 3,
+    "phu nhuan": 5,
+    "quan 1": 5,
+    "quan 10": 11,
+    "quan 11": 5,
+    "quan 12": 15,
+    "quan 3": 11,
+    "quan 4": 4,
+    "quan 5": 6,
+    "quan 6": 3,
+    "quan 7": 8,
+    "quan 8": 5,
+    "tan binh": 15,
+    "tan phu": 20,
+    "thu duc": 21
+   }
+  },
+  "vit-quay": {
+   "aliases": [
+    "vit quay"
+   ],
+   "total": 121,
+   "areas": {
+    "binh chanh": 6,
+    "binh tan": 9,
+    "binh thanh": 5,
+    "cu chi": 2,
+    "go vap": 8,
+    "ho chi minh": 121,
+    "hoc mon": 6,
+    "nha be": 3,
+    "quan 1": 4,
+    "quan 10": 2,
+    "quan 11": 7,
+    "quan 12": 8,
+    "quan 3": 4,
+    "quan 4": 1,
+    "quan 5": 7,
+    "quan 6": 1,
+    "quan 7": 5,
+    "quan 8": 6,
+    "tan binh": 10,
+    "tan phu": 8,
+    "thu duc": 18
+   }
+  },
+  "vit-nuong": {
+   "aliases": [
+    "vit nuong"
+   ],
+   "total": 31,
+   "areas": {
+    "binh tan": 3,
+    "binh thanh": 3,
+    "go vap": 5,
+    "ho chi minh": 31,
+    "quan 12": 4,
+    "quan 3": 1,
+    "quan 6": 1,
+    "quan 7": 3,
+    "tan binh": 3,
+    "tan phu": 3,
+    "thu duc": 5
+   }
+  },
+  "lau-thai": {
+   "aliases": [
+    "lau thai"
+   ],
+   "total": 21,
+   "areas": {
+    "binh thanh": 2,
+    "go vap": 1,
+    "ho chi minh": 21,
+    "hoc mon": 1,
+    "quan 10": 1,
+    "quan 12": 3,
+    "quan 3": 2,
+    "quan 4": 1,
+    "quan 5": 1,
+    "quan 6": 1,
+    "quan 7": 1,
+    "quan 8": 2,
+    "tan phu": 2,
+    "thu duc": 2
+   }
+  },
+  "lau-bo": {
+   "aliases": [
+    "lau bo"
+   ],
+   "total": 257,
+   "areas": {
+    "binh chanh": 7,
+    "binh tan": 16,
+    "binh thanh": 9,
+    "cu chi": 1,
+    "go vap": 16,
+    "ho chi minh": 257,
+    "hoc mon": 12,
+    "nha be": 3,
+    "phu nhuan": 9,
+    "quan 1": 11,
+    "quan 10": 13,
+    "quan 11": 2,
+    "quan 12": 15,
+    "quan 3": 13,
+    "quan 4": 9,
+    "quan 5": 7,
+    "quan 6": 8,
+    "quan 7": 14,
+    "quan 8": 11,
+    "tan binh": 23,
+    "tan phu": 19,
+    "thu duc": 40
+   }
+  },
+  "lau-ga": {
+   "aliases": [
+    "lau ga"
+   ],
+   "total": 164,
+   "areas": {
+    "binh chanh": 1,
+    "binh tan": 12,
+    "binh thanh": 13,
+    "cu chi": 1,
+    "go vap": 18,
+    "ho chi minh": 164,
+    "hoc mon": 3,
+    "nha be": 1,
+    "phu nhuan": 1,
+    "quan 1": 6,
+    "quan 10": 5,
+    "quan 12": 12,
+    "quan 3": 5,
+    "quan 4": 3,
+    "quan 5": 5,
+    "quan 6": 4,
+    "quan 7": 10,
+    "quan 8": 3,
+    "tan binh": 14,
+    "tan phu": 17,
+    "thu duc": 30
+   }
+  },
+  "lau-de": {
+   "aliases": [
+    "lau de"
+   ],
+   "total": 263,
+   "areas": {
+    "binh chanh": 20,
+    "binh tan": 20,
+    "binh thanh": 14,
+    "cu chi": 8,
+    "go vap": 21,
+    "ho chi minh": 263,
+    "hoc mon": 10,
+    "nha be": 4,
+    "phu nhuan": 7,
+    "quan 1": 12,
+    "quan 10": 6,
+    "quan 11": 9,
+    "quan 12": 15,
+    "quan 3": 7,
+    "quan 4": 2,
+    "quan 5": 5,
+    "quan 6": 6,
+    "quan 7": 21,
+    "quan 8": 10,
+    "tan binh": 18,
+    "tan phu": 25,
+    "thu duc": 20
+   }
+  },
+  "lau-ca": {
+   "aliases": [
+    "lau ca"
+   ],
+   "total": 139,
+   "areas": {
+    "binh chanh": 3,
+    "binh tan": 7,
+    "binh thanh": 12,
+    "cu chi": 1,
+    "go vap": 22,
+    "ho chi minh": 139,
+    "hoc mon": 2,
+    "nha be": 1,
+    "quan 1": 2,
+    "quan 10": 9,
+    "quan 11": 7,
+    "quan 12": 4,
+    "quan 3": 6,
+    "quan 4": 4,
+    "quan 5": 8,
+    "quan 6": 5,
+    "quan 7": 8,
+    "quan 8": 2,
+    "tan binh": 3,
+    "tan phu": 18,
+    "thu duc": 16
+   }
+  },
+  "lau-mam": {
+   "aliases": [
+    "lau mam"
+   ],
+   "total": 34,
+   "areas": {
+    "binh tan": 4,
+    "binh thanh": 6,
+    "go vap": 3,
+    "ho chi minh": 34,
+    "phu nhuan": 3,
+    "quan 1": 3,
+    "quan 12": 2,
+    "quan 3": 1,
+    "quan 5": 1,
+    "quan 6": 1,
+    "quan 7": 2,
+    "tan phu": 1,
+    "thu duc": 7
+   }
+  },
+  "lau-nam": {
+   "aliases": [
+    "lau nam"
+   ],
+   "total": 11,
+   "areas": {
+    "binh thanh": 1,
+    "go vap": 1,
+    "ho chi minh": 11,
+    "quan 1": 5,
+    "quan 10": 1,
+    "tan phu": 1,
+    "thu duc": 2
+   }
+  },
+  "oc-huong": {
+   "aliases": [
+    "oc huong"
+   ],
+   "total": 13,
+   "areas": {
+    "binh chanh": 2,
+    "binh tan": 2,
+    "binh thanh": 2,
+    "ho chi minh": 13,
+    "hoc mon": 1,
+    "phu nhuan": 1,
+    "quan 3": 3,
+    "quan 4": 1,
+    "thu duc": 1
+   }
+  },
+  "chao-suon": {
+   "aliases": [
+    "chao suon"
+   ],
+   "total": 25,
+   "areas": {
+    "binh thanh": 4,
+    "go vap": 2,
+    "ho chi minh": 25,
+    "phu nhuan": 1,
+    "quan 1": 6,
+    "quan 10": 3,
+    "quan 4": 1,
+    "quan 6": 1,
+    "quan 7": 1,
+    "tan binh": 4,
+    "tan phu": 1,
+    "thu duc": 1
+   }
+  },
+  "chao-long": {
+   "aliases": [
+    "chao long"
+   ],
+   "total": 164,
+   "areas": {
+    "binh chanh": 2,
+    "binh tan": 10,
+    "binh thanh": 15,
+    "cu chi": 2,
+    "go vap": 22,
+    "ho chi minh": 164,
+    "hoc mon": 6,
+    "nha be": 2,
+    "phu nhuan": 4,
+    "quan 1": 6,
+    "quan 10": 7,
+    "quan 11": 2,
+    "quan 12": 10,
+    "quan 3": 4,
+    "quan 4": 2,
+    "quan 5": 2,
+    "quan 6": 6,
+    "quan 7": 13,
+    "quan 8": 3,
+    "tan binh": 17,
+    "tan phu": 8,
+    "thu duc": 19
+   }
+  },
+  "chao-vit": {
+   "aliases": [
+    "chao vit"
+   ],
+   "total": 33,
+   "areas": {
+    "binh chanh": 2,
+    "binh tan": 2,
+    "binh thanh": 2,
+    "cu chi": 1,
+    "ho chi minh": 33,
+    "nha be": 2,
+    "phu nhuan": 1,
+    "quan 10": 2,
+    "quan 12": 1,
+    "quan 3": 3,
+    "quan 5": 2,
+    "quan 6": 2,
+    "quan 7": 3,
+    "quan 8": 2,
+    "tan binh": 3,
+    "tan phu": 1,
+    "thu duc": 4
+   }
+  },
+  "chao-ech": {
+   "aliases": [
+    "chao ech"
+   ],
+   "total": 93,
+   "areas": {
+    "binh chanh": 3,
+    "binh tan": 3,
+    "binh thanh": 8,
+    "cu chi": 1,
+    "go vap": 11,
+    "ho chi minh": 93,
+    "nha be": 2,
+    "phu nhuan": 3,
+    "quan 1": 9,
+    "quan 10": 5,
+    "quan 11": 1,
+    "quan 12": 5,
+    "quan 3": 1,
+    "quan 4": 3,
+    "quan 5": 7,
+    "quan 6": 2,
+    "quan 7": 5,
+    "quan 8": 1,
+    "tan binh": 6,
+    "tan phu": 7,
+    "thu duc": 9
+   }
+  },
+  "chao-ca": {
+   "aliases": [
+    "chao ca"
+   ],
+   "total": 13,
+   "areas": {
+    "binh thanh": 2,
+    "ho chi minh": 13,
+    "hoc mon": 1,
+    "quan 4": 1,
+    "quan 7": 1,
+    "tan binh": 1,
+    "tan phu": 3,
+    "thu duc": 3
+   }
+  },
+  "banh-mi-chao": {
+   "aliases": [
+    "banh mi chao"
+   ],
+   "total": 39,
+   "areas": {
+    "binh tan": 2,
+    "binh thanh": 3,
+    "go vap": 5,
+    "ho chi minh": 39,
+    "hoc mon": 1,
+    "phu nhuan": 1,
+    "quan 1": 4,
+    "quan 10": 3,
+    "quan 12": 1,
+    "quan 4": 1,
+    "quan 5": 1,
+    "quan 6": 1,
+    "quan 7": 2,
+    "tan binh": 3,
+    "tan phu": 4,
+    "thu duc": 7
+   }
+  },
+  "banh-mi-que": {
+   "aliases": [
+    "banh mi que"
+   ],
+   "total": 28,
+   "areas": {
+    "binh chanh": 3,
+    "binh thanh": 1,
+    "go vap": 1,
+    "ho chi minh": 28,
+    "quan 1": 1,
+    "quan 10": 2,
+    "quan 4": 2,
+    "quan 5": 1,
+    "quan 6": 2,
+    "quan 7": 1,
+    "quan 8": 1,
+    "tan binh": 3,
+    "tan phu": 3,
+    "thu duc": 7
+   }
+  },
+  "banh-mi-xiu-mai": {
+   "aliases": [
+    "banh mi xiu mai"
+   ],
+   "total": 22,
+   "areas": {
+    "binh chanh": 1,
+    "binh thanh": 1,
+    "go vap": 5,
+    "ho chi minh": 22,
+    "quan 1": 2,
+    "quan 10": 1,
+    "quan 3": 2,
+    "quan 4": 1,
+    "quan 5": 1,
+    "quan 6": 2,
+    "quan 7": 1,
+    "quan 8": 1,
+    "tan binh": 2,
+    "thu duc": 3
+   }
+  },
+  "xoi-ga": {
+   "aliases": [
+    "xoi ga"
+   ],
+   "total": 19,
+   "areas": {
+    "binh thanh": 1,
+    "go vap": 1,
+    "ho chi minh": 19,
+    "phu nhuan": 1,
+    "quan 1": 5,
+    "quan 11": 1,
+    "quan 12": 1,
+    "quan 3": 4,
+    "quan 8": 1,
+    "tan binh": 3,
+    "thu duc": 1
+   }
+  },
+  "xoi-man": {
+   "aliases": [
+    "xoi man"
+   ],
+   "total": 16,
+   "areas": {
+    "binh chanh": 1,
+    "binh thanh": 3,
+    "go vap": 2,
+    "ho chi minh": 16,
+    "quan 1": 3,
+    "quan 11": 2,
+    "quan 3": 1,
+    "quan 5": 2,
+    "tan binh": 1
+   }
+  },
+  "pho-ga": {
+   "aliases": [
+    "pho ga"
+   ],
+   "total": 74,
+   "areas": {
+    "binh chanh": 1,
+    "binh thanh": 12,
+    "go vap": 7,
+    "ho chi minh": 74,
+    "nha be": 1,
+    "phu nhuan": 5,
+    "quan 1": 8,
+    "quan 10": 5,
+    "quan 12": 1,
+    "quan 3": 4,
+    "quan 5": 1,
+    "quan 6": 1,
+    "quan 7": 10,
+    "tan binh": 6,
+    "tan phu": 2,
+    "thu duc": 10
+   }
+  },
+  "pho-bo": {
+   "aliases": [
+    "pho bo"
+   ],
+   "total": 53,
+   "areas": {
+    "binh chanh": 1,
+    "binh tan": 3,
+    "binh thanh": 4,
+    "cu chi": 2,
+    "go vap": 5,
+    "ho chi minh": 53,
+    "hoc mon": 1,
+    "nha be": 1,
+    "quan 1": 7,
+    "quan 10": 2,
+    "quan 11": 2,
+    "quan 12": 2,
+    "quan 3": 2,
+    "quan 5": 1,
+    "quan 7": 6,
+    "quan 8": 1,
+    "tan binh": 6,
+    "tan phu": 3,
+    "thu duc": 3
+   }
+  },
+  "hu-tieu-muc": {
+   "aliases": [
+    "hu tieu muc"
+   ],
+   "total": 56,
+   "areas": {
+    "binh chanh": 1,
+    "binh tan": 3,
+    "binh thanh": 1,
+    "go vap": 7,
+    "ho chi minh": 56,
+    "hoc mon": 1,
+    "phu nhuan": 4,
+    "quan 1": 2,
+    "quan 10": 2,
+    "quan 12": 4,
+    "quan 3": 2,
+    "quan 5": 1,
+    "quan 6": 2,
+    "quan 7": 5,
+    "quan 8": 2,
+    "tan binh": 5,
+    "tan phu": 4,
+    "thu duc": 8
    }
   }
  }

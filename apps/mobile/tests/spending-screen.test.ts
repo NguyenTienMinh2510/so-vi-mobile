@@ -11,7 +11,7 @@ function harness(native = false) {
   const require = createRequire(import.meta.url), ts = require('typescript');
   let ledger = domain.emptyLedger(), revision = 0, locked = false, cursor = 0; const slots: any[] = [], effects: (() => void)[] = [], commands: any[] = []; let id = 0, cancellation = 0, finishAi: ((v: any) => void) | null = null, pauseSave = false, finishSave: (() => void) | null = null;
   const meal = { id: 'rice', name: 'Cơm', price: '12000', portion: '1 bữa', mode: 'out' as const, address: '', priceSource: 'Giá giả', pricedAt: '2026-10-13', estimated: false, allergens: [] };
-  ledger.spending.catalog = [meal, { ...meal, id: 'pho', name: 'Phở', price: '30000' }];
+  ledger.spending.catalog = [meal, { ...meal, id: 'pho', name: 'Phở', price: '30000' }, { ...meal, id: 'bun', name: 'Bún', price: '20000' }];
   const react = { Fragment: 'Fragment', createElement: (type: any, props: any, ...children: any[]) => ({ type, props: { ...props, children } }), useState: (initial: any) => { const at = cursor++; if (!(at in slots)) slots[at] = typeof initial === 'function' ? initial() : initial; return [slots[at], (v: any) => { slots[at] = typeof v === 'function' ? v(slots[at]) : v; }]; }, useRef: (v: any) => { const at = cursor++; if (!(at in slots)) slots[at] = { current: v }; return slots[at]; }, useEffect: (fn: any, deps: any[]) => { const at = cursor++; const old = slots[at]; if (!old || deps.some((x, i) => !Object.is(x, old[i]))) { slots[at] = deps; effects.push(fn); } } };
   class Clock extends Date { constructor(v?: string) { super(v ?? now); } }
   const exports: any = {};

@@ -20,16 +20,16 @@ const empty = { likedIds: [] as string[], excludedIds: [] as string[], excludedA
 test('generated dish knowledge belongs to the bundled release and covers every estimate', () => {
   const sha = createHash('sha256').update(readFileSync(path('assets/food/sovi-food-2026-09-23.1.db'))).digest('hex');
   assert.equal(FOOD_KNOWLEDGE.release, '2026-09-23.1'); assert.equal(FOOD_KNOWLEDGE.database_sha256, sha); assert.equal(FOOD_KNOWLEDGE.evidence, 'venue_name_signal');
-  assert.equal(catalog.length, 30); assert.equal(catalog.filter(m => m.mode === 'out').length, 22);
+  assert.equal(catalog.length, 88); assert.equal(catalog.filter(m => m.mode === 'out').length, 80);
   for (const meal of catalog.filter(m => m.mode === 'out')) { const known = (FOOD_KNOWLEDGE.dishes as any)[meal.id.slice(17)]; assert.ok(known, meal.id); assert.ok(known.areas['ho chi minh'] === known.total); }
   assert.ok(Object.keys(FOOD_KNOWLEDGE.areaTotals).every(a => !/^(?:phuong|xa) /.test(a)));
 });
 test('dish aliases map spelling variants, longer dish names and unaccented text to one estimate', () => {
   assert.deepEqual(ids('hủ tíu'), [id('hu-tieu')]); assert.deepEqual(ids('hu tieu nam vang'), [id('hu-tieu')]);
-  assert.deepEqual(ids('bún bò Huế đặc biệt'), [id('bun-bo')]); assert.deepEqual(ids('phở bò tái'), [id('pho')]);
+  assert.deepEqual(ids('bún bò Huế đặc biệt'), [id('bun-bo')]); assert.deepEqual(ids('phở bò tái'), [id('pho-bo')]);
   assert.deepEqual(ids('com tam suon bi'), [id('com-tam')]); assert.deepEqual(ids('gà xối mỡ'), [id('com-ga')]);
   assert.deepEqual(ids('bún chả cá Nha Trang'), [id('bun-ca')]); assert.deepEqual(ids('bún chả'), [id('bun-cha')].sort());
-  assert.equal(ids('bún').length, 7); assert.deepEqual(ids('x'), []); assert.deepEqual(ids('pizza'), []);
+  assert.equal(ids('bún').length, 12); assert.deepEqual(ids('x'), []); assert.deepEqual(ids('pizza'), []);
   const own = { ...catalog[0], id: 'my-hu-tieu', name: 'Hủ tiếu nhà làm' };
   assert.deepEqual(dishNames(own), ['hu tieu nha lam']); assert.deepEqual(matchCatalogDishes('hủ tíu', [own]), []);
 });
@@ -39,7 +39,8 @@ test('reviewer accepts alias wording only for the dish it names and still reject
   reviewRoadmapPreferences('bun dau mam tom it nhat 2 lan moi tuan', { ...empty, frequency: [{ mealId: id('bun-dau'), min: 2, max: 21 }] }, catalog);
   assert.throws(() => reviewRoadmapPreferences('thích hủ tíu', { ...empty, likedIds: [id('hu-tieu'), id('pho')] }, catalog), /tự thêm/);
   assert.throws(() => reviewRoadmapPreferences('không ăn bún bò huế', { ...empty, excludedIds: [id('bun-rieu')] }, catalog));
-  const shortlist = roadmapAiCatalog('không ăn bún', catalog); assert.equal(shortlist.length, 8); assert.equal(roadmapAiAliases(shortlist).at(-1)!.id, 'm8');
+  assert.throws(() => roadmapAiCatalog('không ăn bún', catalog), /hơn 8 món/);
+  const shortlist = roadmapAiCatalog('không ăn bún', catalog.slice(0, 22)); assert.equal(shortlist.length, 8); assert.equal(roadmapAiAliases(shortlist).at(-1)!.id, 'm8');
   assert.ok(shortlist.filter(m => /^Bún/.test(m.name)).length === 7);
 });
 test('area knowledge picks the most specific known district and ranks dishes by local venue-name signal', () => {

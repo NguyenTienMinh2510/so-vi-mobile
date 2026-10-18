@@ -45,7 +45,7 @@ test('source cancellation is propagated; no subsequent requests, no invented fal
 });
 test('online roadmap save atomically merges catalogue+plan with idempotency, preserves financial data and rejects stale/deficit', () => {
   const s = emptyLedger(), catalog = parseOnlineMenu(html(), source, day);
-  const config = { id: 'roadmap-test', name: 'Quận 10', startDay: day, endDay: day, timezone: s.settings.timezone, budget: '200000', reserve: '10000', walletIds: [], categoryIds: [], mealsPerDay: 3, allowCooking: false, fixed: [] };
+  const config = { id: 'roadmap-test', name: 'Quận 10', startDay: day, endDay: day, timezone: s.settings.timezone, budget: '200000', reserve: '10000', walletIds: [], categoryIds: [], mealsPerDay: 2, allowCooking: false, fixed: [] };
   const plan = planSpending(s, config, catalog, s.spending.preferences, now);
   const command = { type: 'spending.roadmap.upsert', mutationId: 'roadmap-save', payload: { catalog, plan, expectedVersion: null } } as const;
   const saved = applyCommand(s, command, { now }); assert.equal(saved.spending.plans.length, 1); assert.equal(saved.spending.catalog.length, 2); assert.deepEqual(saved.transactions, s.transactions);

@@ -2,11 +2,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseThinkingResult, THINKING_LIMITS, buildLlamaInit, buildThinkingMessages, buildThinkingCompletion, buildFastPrompt, buildFastCompletion, thinkingAttemptMs, isThinkingIncomplete } from '../src/spending-thinking.ts';
 import { estimatedRoadmapMeals, mealFitsSlot, isCookedEstimate, cookedIngredients } from '../src/spending-meal-estimates.ts';
-import { parseRoadmapPrompt, reviewRoadmapPreferences, thinkingAliases, thinkingMenu, restoreThinkingPreferences, minimumEatOutCost } from '../src/spending-roadmap.ts';
+import { parseRoadmapPrompt, reviewRoadmapPreferences, thinkingAliases, thinkingMenu, restoreThinkingPreferences, minimumEatOutCost, retrieveRoadmapMeals } from '../src/spending-roadmap.ts';
 import { planSpending } from '../src/spending.ts';
 import { emptyLedger } from '../src/domain.ts';
 
-const catalog = estimatedRoadmapMeals('2026-10-17'), aliases = thinkingAliases(catalog);
+const catalog = retrieveRoadmapMeals('Quận 10', '', estimatedRoadmapMeals('2026-10-17'), true), aliases = thinkingAliases(catalog);
 const json = (value: object) => JSON.stringify({ likedIds: [], excludedIds: [], frequency: [], allowCooking: false, tips: [], ...value });
 const config = (budget: string, allowCooking: boolean) => ({ id: 'p', name: 'Quận 10, TP.HCM', startDay: '2026-10-17', endDay: '2026-10-23', timezone: 'Asia/Ho_Chi_Minh', budget, reserve: '0', walletIds: [], categoryIds: [], mealsPerDay: 3, allowCooking, fixed: [] });
 const none = { likedIds: [], excludedIds: [], excludedAllergens: [], frequency: [] };
@@ -22,12 +22,12 @@ test('prompt separates cooking permission from area and food preferences', () =>
 test('cooked estimates are cheap, labelled, breakfast-aware and used only when the plan allows cooking', () => {
   const cooked = catalog.filter(isCookedEstimate); assert.equal(cooked.length, 8);
   assert.ok(cooked.every(m => m.mode === 'cook' && m.estimated && /tự (?:nấu|làm)/.test(m.name) && cookedIngredients(m) && BigInt(m.price) <= 20000n));
-  assert.equal(cookedIngredients(catalog[0]), null); assert.ok(mealFitsSlot(cooked.find(m => /Mì gói/.test(m.name))!, 0, 3)); assert.ok(!mealFitsSlot(cooked.find(m => /Bánh mì ốp la/.test(m.name))!, 2, 3));
+  assert.equal(cookedIngredients(catalog.find(m => m.mode === 'out')!), null); assert.ok(mealFitsSlot(cooked.find(m => /Mì gói/.test(m.name))!, 0, 3)); assert.ok(!mealFitsSlot(cooked.find(m => /Bánh mì ốp la/.test(m.name))!, 2, 3));
   assert.throws(() => planSpending(emptyLedger(), config('400000', false), catalog, none, '2026-10-17T01:00:00.000Z'));
   const plan = planSpending(emptyLedger(), config('400000', true), catalog, none, '2026-10-17T01:00:00.000Z');
   assert.ok(plan.meals.some(s => s.meal.mode === 'cook')); assert.ok(plan.meals.reduce((n, s) => n + BigInt(s.meal.price), 0n) <= 400000n);
   const outOnly = catalog.filter(m => m.mode === 'out');
-  assert.equal(minimumEatOutCost(outOnly, 7, 3, (m, i) => mealFitsSlot(m, i, 3)), 525000n); assert.equal(minimumEatOutCost([], 7, 3, () => true), null);
+  assert.equal(minimumEatOutCost(outOnly, 7, 3, (m, i) => mealFitsSlot(m, i, 3)), 595000n); assert.equal(minimumEatOutCost([], 7, 3, () => true), null);
 });
 test('thinking output boundary accepts one closed JSON object after reasoning and rejects everything else', () => {
   const r = parseThinkingResult('<think>bỏ qua</think>```json\n' + json({ likedIds: ['m23'], allowCooking: true, tips: ['  Nấu\n nồi lớn  '] }) + '\n```', aliases, 'allow', 'nghĩ   rất\n kỹ');
@@ -38,7 +38,7 @@ test('thinking output boundary accepts one closed JSON object after reasoning an
 });
 test('thinking menu exposes breakfast fit and local signal; restore maps aliases back to stable IDs', () => {
   const menu = thinkingMenu('Quận 10, TP.HCM', catalog, m => mealFitsSlot(m, 0, 3));
-  assert.equal(menu.length, 30); assert.equal(menu.find(m => m.name === 'Bánh mì')!.breakfast, true); assert.equal(menu.find(m => m.name === 'Cơm tấm')!.breakfast, false);
+  assert.equal(menu.length, 32); assert.equal(menu.find(m => m.name === 'Bánh mì')!.breakfast, true); assert.equal(menu.find(m => m.name === 'Cơm tấm')!.breakfast, false);
   assert.ok(menu.filter(m => m.cook).every(m => m.localVenues === null)); assert.ok(typeof menu.find(m => m.name === 'Phở')!.localVenues === 'number');
   const restored = restoreThinkingPreferences({ ...none, likedIds: ['m2'], frequency: [{ mealId: 'm1', min: 1, max: 3 }] }, catalog);
   assert.deepEqual(restored.likedIds, [catalog[1].id]); assert.equal(restored.frequency[0].mealId, catalog[0].id);

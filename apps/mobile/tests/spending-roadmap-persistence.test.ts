@@ -25,7 +25,7 @@ test('real SQLite online roadmap save preserves existing finances/catalogue and 
       { type: 'transaction.create', mutationId: 'expense-create', payload: { id: 'expense', walletId: 'cash', categoryId: 'food', kind: 'expense', amount: '50000', occurredAt: now, note: 'Chi thực đã có', tagIds: [] } },
       { type: 'spending.meal.upsert', mutationId: 'old-meal', payload: { meal: existing } },
     ]) loaded = await repo.mutate(command, loaded.revision);
-    const before = loaded, config = { id: 'online-roadmap', name: 'Quận 10', startDay: day, endDay: day, timezone: 'Asia/Ho_Chi_Minh', budget: '200000', reserve: '10000', walletIds: ['cash'], categoryIds: ['food'], mealsPerDay: 3, allowCooking: false, fixed: [] };
+    const before = loaded, config = { id: 'online-roadmap', name: 'Quận 10', startDay: day, endDay: day, timezone: 'Asia/Ho_Chi_Minh', budget: '200000', reserve: '10000', walletIds: ['cash'], categoryIds: ['food'], mealsPerDay: 1, allowCooking: false, fixed: [] };
     const plan = planSpending(before.ledger, config, catalog, before.ledger.spending.preferences, now);
     const command = { type: 'spending.roadmap.upsert', mutationId: 'online-save', payload: { catalog, plan, expectedVersion: null } };
     db.exec("CREATE TRIGGER reject_roadmap BEFORE UPDATE ON spending_data BEGIN SELECT RAISE(ABORT, 'forced rollback'); END");

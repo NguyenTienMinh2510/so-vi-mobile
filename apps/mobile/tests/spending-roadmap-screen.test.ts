@@ -22,7 +22,7 @@ function harness(available = true, actualDiscovery = false) {
   const thinkCalls: any[] = [], thinkReplies: any[] = [], fastReplies: number[] = [], networkModes: string[] = []; let pausedAi = false;
   const slots: any[] = [], effects: (() => void)[] = [], commands: any[] = []; const intervals = new Map<number,()=>void>(); let clockMillis = Date.parse(now), timerId = 0; let identifier = 0, cancelCount = 0;
   let resolveFetch: ((v: any) => void) | undefined, resolveAi: ((v: any) => void) | undefined, resolveSave: (() => void) | undefined;
-  const catalog = ['Cơm', 'Phở', 'Bún'].map((name, i) => ({ id: ['rice', 'pho', 'bun'][i], name, price: String(30000 + i * 10000), portion: '1 phần · Quán test', mode: 'out' as const, address: 'Quận 10, TP.HCM', priceSource: 'https://food.be.com.vn/ho-chi-minh/dieu-lan-quan-chay-hoa-hung-26064', pricedAt: '2026-10-13', estimated: true, allergens: [] }));
+  const catalog = ['Cơm', 'Phở', 'Bún', 'Mì'].map((name, i) => ({ id: ['rice', 'pho', 'bun', 'mi'][i], name, price: String(30000 + i * 10000), portion: '1 phần · Quán test', mode: 'out' as const, address: 'Quận 10, TP.HCM', priceSource: 'https://food.be.com.vn/ho-chi-minh/dieu-lan-quan-chay-hoa-hung-26064', pricedAt: '2026-10-13', estimated: true, allergens: [] }));
   const react = { Fragment: 'Fragment', createElement: (type: any, props: any, ...children: any[]) => ({ type, props: { ...props, children } }), useState: (initial: any) => { const at = cursor++; if (!(at in slots)) slots[at] = typeof initial === 'function' ? initial() : initial; return [slots[at], (v: any) => { slots[at] = typeof v === 'function' ? v(slots[at]) : v; }]; }, useRef: (v: any) => { const at = cursor++; if (!(at in slots)) slots[at] = { current: v }; return slots[at]; }, useEffect: (fn: any, deps: any[]) => { const at = cursor++; const old = slots[at]; if (!old || deps.some((x, i) => !Object.is(x, old[i]))) { slots[at] = deps; effects.push(fn); } } };
   class Clock extends Date { constructor(v?: string) { super(v ?? now); } static now(){return clockMillis;} }
   const config = { url: 'https://worker.test', token: 'fake-test-token' }, cloud: any = {};
@@ -72,6 +72,7 @@ const settle = async () => { for (let n = 0; n < 32; n++) await Promise.resolve(
 async function create(h: ReturnType<typeof harness>) { h.node('Field', 'Mô tả roadmap').props.onChangeText('Quận 10, 2 ngày, 300k, 3 bữa/ngày, thích cơm'); h.node('Button', 'Tạo roadmap').props.onPress(); await settle(); h.render(); }
 test('roadmap imports only on reviewed save, displays one day and week, never creates an expense', async () => {
   const h = harness(); await create(h); assert.equal(h.commands.length, 0);
+  assert.match(h.text(), /Ngân sách thấp nên một số món bị lặp\./);
   assert.equal(h.render().filter(v => v.type === 'Button' && /^Đổi bữa/.test(v.props.title)).length, 3);
   h.node('Choice', 'Xem roadmap').props.onSelect('week'); assert.ok(h.text().includes('13/10') && h.text().includes('14/10'));
   h.node('Button', 'Lưu roadmap').props.onPress(); await settle(); assert.equal(h.commands.length, 1); assert.equal(h.commands[0].type, 'spending.roadmap.upsert'); assert.equal(h.ledger().transactions.length, 0);
@@ -89,7 +90,7 @@ test('captured save rejects after the live ledger revision advances', async () =
   const h = harness(); await create(h); const save = h.node('Button', 'Lưu roadmap').props.onPress; h.advance(); h.render(); save(); await settle(); assert.equal(h.commands.length, 0);
 });
 test('an ordinary swap cannot refresh a stale proposal without explicit recomputation', async () => {
-  const h = harness(); await create(h); h.node('Button', 'Đổi bữa 1').props.onPress(); const choose = h.node('Button', 'Chọn Phở').props.onPress;
+  const h = harness(); await create(h); h.node('Button', 'Đổi bữa 1').props.onPress(); const choose = h.node('Button', 'Chọn Mì').props.onPress;
   h.advance(); h.render(); choose(); await settle(); assert.equal(h.node('Button', 'Lưu roadmap').props.disabled, true); assert.equal(h.commands.length, 0);
 });
 test('pending save preserves a later prompt without losing the saved revision of the roadmap', async () => {
@@ -149,7 +150,7 @@ test('thinking mode lets AI choose home cooking for a low budget, exact planner 
   const h = harness(true, true);
   h.queueThink((request: any) => ({ preferences: { likedIds: [cookAlias(request)], excludedIds: [], excludedAllergens: [], frequency: [] }, allowCooking: true, tips: ['Nấu nồi thịt kho ăn 3 bữa tối.'], reasoning: '19k mỗi bữa thì ăn ngoài không đủ.' }));
   await thinkPrompt(h, 'Quận 10, 7 ngày, 400k, 3 bữa/ngày, tự nấu được');
-  const call = h.thinkCalls[0].request; assert.equal(call.cooking, 'allow'); assert.equal(call.menu.length, 30); assert.equal(call.days, 7); assert.equal(call.budget, '400000');
+  const call = h.thinkCalls[0].request; assert.equal(call.cooking, 'allow'); assert.equal(call.menu.length, 32); assert.equal(call.days, 7); assert.equal(call.budget, '400000');
   assert.ok(call.menu.some((m: any) => m.cook) && call.menu.every((m: any, i: number) => m.id === `m${i + 1}`));
   const text = h.text(); assert.match(text, /AI đã suy nghĩ/); assert.match(text, /Nấu nồi thịt kho/); assert.match(text, /Có dùng món tự nấu/);
   h.node('Pressable', 'Quá trình suy nghĩ của AI').props.onPress(); assert.match(h.text(), /19k mỗi bữa/);
